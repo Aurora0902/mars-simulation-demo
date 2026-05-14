@@ -6,6 +6,7 @@ import threading
 import re
 import glob
 import traceback
+import uuid
 from datetime import datetime
 
 import pandas as pd
@@ -26,7 +27,6 @@ from mars_simulation.synthetic_groups import GROUP_DEFS, build_agents_dataframe
 
 AGENTS_DF = build_agents_dataframe()   # 全局 DataFrame，各控制器共享
 
-_sim_lock = threading.Lock()
 
 ROLE_COLORS = {
     '知识贡献者': '#4A90D9',
@@ -74,10 +74,10 @@ def _build_group_info() -> dict:
             friend_raw  = m.get('friend_in_group', '')
             members.append({
                 'name':         m['name'],
-                'display':      '小' + m['name'][0],
+                'display':      m['name'][0] + m['name'][0],
                 'gender':       m['gender'],
                 'score_label':  score_label,
-                'friend_disp':  ('小' + friend_raw[0]) if friend_raw else '',
+                'friend_disp':  (friend_raw[0] + friend_raw[0]) if friend_raw else '',
                 'speaking_cnt': sc,
                 'speaking_pct': round(sc / base_turns * 100) if base_turns else 0,
             })
@@ -100,9 +100,23 @@ _NAME_TO_DISPLAY: dict = {
     for g in GROUPS.values() for m in g['members']
 }
 
+_NAME_HAS_FRIEND: dict = {
+    m['name']: bool(m['friend_disp'])
+    for g in GROUPS.values() for m in g['members']
+}
+
+_NAME_STARS: dict = {
+    m['name']: ('⭐⭐⭐' if m['score_label'] == '成绩较好'
+                else '⭐' if m['score_label'] == '成绩较差' else '⭐⭐')
+    for g in GROUPS.values() for m in g['members']
+}
+
 
 def display_name(full_name: str) -> str:
-    return _NAME_TO_DISPLAY.get(full_name, '小' + full_name[0] if full_name else full_name)
+    base = _NAME_TO_DISPLAY.get(full_name, full_name[0] + full_name[0] if full_name else full_name)
+    heart = ' ❤️' if _NAME_HAS_FRIEND.get(full_name) else ''
+    stars = ' ' + _NAME_STARS.get(full_name, '') if full_name in _NAME_STARS else ''
+    return f"{base}{heart}{stars}"
 
 
 # ── SSE helpers ──────────────────────────────────────────────────────────────
@@ -339,17 +353,16 @@ def _simulate_response(group_id: int, ctrl_factory, record_history: bool = True)
     q: queue.Queue = queue.Queue()
     cancel_event   = threading.Event()
 
+    run_id = uuid.uuid4().hex[:8]
+
     def run():
-        if not _sim_lock.acquire(blocking=False):
-            q.put({'type': 'error', 'msg': '已有模拟正在运行，请等待完成或重启服务后再试。'})
-            return
         try:
             ctrl = ctrl_factory()
             with LineCapture(q):
                 ctrl.run_simulation(
                     group_agent_names=member_names,
                     dialogue_turns=actual_turns,
-                    output_file_path=os.path.join(BASE_DIR, f'sim_{group_id}_web_tmp.txt'),
+                    output_file_path=os.path.join(BASE_DIR, f'sim_{group_id}_{run_id}_tmp.txt'),
                     task_name=task_cfg['task_name'],
                     should_stop=cancel_event.is_set,
                 )
@@ -358,8 +371,6 @@ def _simulate_response(group_id: int, ctrl_factory, record_history: bool = True)
             q.put({'type': 'error', 'msg': f'模拟运行失败：{exc}'})
         else:
             q.put({'type': 'done'})
-        finally:
-            _sim_lock.release()
 
     threading.Thread(target=run, daemon=True).start()
 

@@ -1,6 +1,7 @@
 
 import os
 import re
+import random
 from typing import List, Tuple
 import pandas as pd
 from openai import OpenAI
@@ -27,12 +28,23 @@ class BatchDialogueGenerator:
     """
 
     def __init__(self, agents_data: pd.DataFrame):
-        api_key = os.environ.get("DEEPSEEK_API_KEY")
-        if not api_key:
-            raise ValueError("DEEPSEEK_API_KEY 环境变量未设置。")
-        self.client     = OpenAI(api_key=api_key, base_url="https://api.deepseek.com/v1", timeout=60.0)
+        keys = [k.strip() for k in os.environ.get("DEEPSEEK_API_KEYS", "").split(",") if k.strip()]
+        if not keys:
+            single = os.environ.get("DEEPSEEK_API_KEY", "")
+            if not single:
+                raise ValueError("DEEPSEEK_API_KEY 或 DEEPSEEK_API_KEYS 环境变量未设置。")
+            keys = [single]
+        self._api_keys = keys
+        self.client     = self._make_client()
         self.model_name = "deepseek-chat"
         self.agents_data = agents_data
+
+    def _make_client(self) -> OpenAI:
+        return OpenAI(
+            api_key=random.choice(self._api_keys),
+            base_url="https://api.deepseek.com/v1",
+            timeout=180.0,
+        )
 
     def _build_member_profiles(self, group_names: List[str]) -> str:
         profiles = [Student(self.agents_data.loc[name]).profile_text for name in group_names]

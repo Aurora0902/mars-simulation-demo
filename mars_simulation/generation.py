@@ -1,6 +1,7 @@
 
 import os
 import re
+import random
 from typing import List, Tuple
 import pandas as pd
 from openai import OpenAI
@@ -99,12 +100,25 @@ class BatchDialogueGenerator:
     """
 
     def __init__(self, agents_data: pd.DataFrame):
-        api_key = os.environ.get("DEEPSEEK_API_KEY")
-        if not api_key:
-            raise ValueError("DEEPSEEK_API_KEY 环境变量未设置。")
-        self.client     = OpenAI(api_key=api_key, base_url="https://api.deepseek.com/v1", timeout=60.0)
+        keys = [k.strip() for k in os.environ.get("DEEPSEEK_API_KEYS", "").split(",") if k.strip()]
+        if not keys:
+            # 兼容旧的单 key 环境变量
+            single = os.environ.get("DEEPSEEK_API_KEY", "")
+            if not single:
+                raise ValueError("DEEPSEEK_API_KEY 或 DEEPSEEK_API_KEYS 环境变量未设置。")
+            keys = [single]
+        self._api_keys = keys
+        self.client     = self._make_client()
         self.model_name = "deepseek-chat"
         self.agents_data = agents_data
+
+    def _make_client(self) -> OpenAI:
+        """随机选一个 key 创建客户端，分散限流压力。"""
+        return OpenAI(
+            api_key=random.choice(self._api_keys),
+            base_url="https://api.deepseek.com/v1",
+            timeout=180.0,
+        )
 
     def _build_member_profiles(self, group_names: List[str]) -> str:
         profiles = [Student(self.agents_data.loc[name]).profile_text for name in group_names]
@@ -151,6 +165,7 @@ class BatchDialogueGenerator:
 直接输出："""
 
             try:
+                self.client = self._make_client()
                 resp = self.client.chat.completions.create(
                     model=self.model_name,
                     messages=[
@@ -352,6 +367,7 @@ class BatchDialogueGenerator:
         )
 
         try:
+            self.client = self._make_client()
             stream = self.client.chat.completions.create(
                 model=self.model_name,
                 messages=[
@@ -370,27 +386,26 @@ class BatchDialogueGenerator:
 
         buffer   = ""
         turn_idx = 0
-        for chunk in stream:
-            if not chunk.choices:
-                continue
-            buffer += chunk.choices[0].delta.content or ""
-            while "\n" in buffer and turn_idx < len(turn_sequence):
-                line, buffer = buffer.split("\n", 1)
-                utterance = self._parse_line(line)
-                if utterance:
-                    g, spk, role = turn_sequence[turn_idx]
-                    yield g, spk, role, self._repair_utterance(
-                        utterance, spk, role, recent_history, task_name, stage_name, stage_desc,
-                    )
-                    turn_idx += 1
+        try:
+            for chunk in stream:
+                if not chunk.choices:
+                    continue
+                buffer += chunk.choices[0].delta.content or ""
+                while "\n" in buffer and turn_idx < len(turn_sequence):
+                    line, buffer = buffer.split("\n", 1)
+                    utterance = self._parse_line(line)
+                    if utterance:
+                        g, spk, role = turn_sequence[turn_idx]
+                        yield g, spk, role, utterance
+                        turn_idx += 1
+        except Exception as e:
+            print(f"\n[stream] 流式传输中断: {e}，已收到 {turn_idx} 轮，剩余走 retry")
 
         if buffer.strip() and turn_idx < len(turn_sequence):
             utterance = self._parse_line(buffer.strip())
             if utterance:
                 g, spk, role = turn_sequence[turn_idx]
-                yield g, spk, role, self._repair_utterance(
-                    utterance, spk, role, recent_history, task_name, stage_name, stage_desc,
-                )
+                yield g, spk, role, utterance
                 turn_idx += 1
 
         # 如果还有未填充的轮次，先 retry 一次，再 fallback

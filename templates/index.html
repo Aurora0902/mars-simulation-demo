@@ -115,11 +115,12 @@ body { font-family: 'PingFang SC','Microsoft YaHei',sans-serif; background:#F0F4
   overflow:hidden;
 }
 .sim-header {
-  display:flex; align-items:center; gap:12px;
-  padding:0 20px; height:60px; flex-shrink:0;
+  display:flex; align-items:center; gap:8px;
+  padding:8px 12px; min-height:50px; flex-shrink:0;
   background:#fff; box-shadow:0 2px 8px rgba(0,0,0,.06);
+  flex-wrap:wrap;
 }
-.sim-header h2 { font-size:1rem; white-space:nowrap; margin-right:4px; }
+.sim-header h2 { font-size:.9rem; white-space:nowrap; margin-right:4px; }
 .progress-wrap { display:flex; align-items:center; gap:10px; flex:1; }
 .progress-bar-bg {
   flex:1; height:8px; background:#E0E7FF; border-radius:4px; overflow:hidden;
@@ -572,6 +573,15 @@ body { font-family: 'PingFang SC','Microsoft YaHei',sans-serif; background:#F0F4
   .log-panel  { width:100%; height:auto; }
   .cmp-body   { flex-direction:column; overflow:auto; }
 }
+@media(max-width:500px){
+  .sim-header { gap:4px; padding:6px 8px; }
+  .sim-header h2 { font-size:.8rem; }
+  .progress-wrap { flex:1 1 100%; order:10; }
+  .phase-badge { font-size:.7rem; padding:2px 6px; }
+  .sim-header button { padding:4px 8px !important; font-size:.72rem !important; }
+  .group-grid { grid-template-columns:1fr; }
+  .member-card { padding:10px; }
+}
 </style>
 </head>
 <body>
@@ -580,9 +590,7 @@ body { font-family: 'PingFang SC','Microsoft YaHei',sans-serif; background:#F0F4
 <section id="s1" class="screen active">
   <h1>🏫 MARS 小组合作模拟</h1>
   <p class="subtitle">选择一个典型合作学习小组，观察不同分组方式下的课堂互动差异</p>
-  <div class="s1-actions">
-    <button class="btn-history" onclick="goScreen(4)">📋 历史记录</button>
-  </div>
+  <div class="s1-actions"></div>
   <div class="group-grid" id="groupGrid"></div>
 </section>
 
@@ -655,10 +663,10 @@ body { font-family: 'PingFang SC','Microsoft YaHei',sans-serif; background:#F0F4
       <span class="progress-label" id="progressLabel">0 / —</span>
     </div>
     <span class="phase-badge" id="phaseBadge">S1 确定主题</span>
-    <button class="btn btn-danger"    id="stopBtn"   style="padding:7px 16px;font-size:.85rem;margin-left:10px" onclick="stopSim()">⏹ 停止</button>
-    <button class="btn-cmp"           id="cmpBtn"    style="margin-left:6px" hidden onclick="goCompare()">📊 提示词对比</button>
-    <button style="padding:7px 16px;font-size:.85rem;margin-left:6px;border:none;border-radius:10px;background:linear-gradient(135deg,#2ECC71,#27AE60);color:#fff;cursor:pointer;font-weight:600" id="recBtn" hidden onclick="openRec()">💡 教学建议</button>
-    <button class="btn btn-secondary"                style="padding:7px 16px;font-size:.85rem;margin-left:6px"  onclick="goScreen(1)">返回</button>
+    <button class="btn btn-danger"    id="stopBtn"   style="padding:5px 10px;font-size:.78rem" onclick="stopSim()">⏹ 停止</button>
+    <button class="btn-cmp"           id="cmpBtn"    style="padding:5px 10px;font-size:.78rem" hidden onclick="goCompare()">📊 对比</button>
+    <button style="padding:5px 10px;font-size:.78rem;border:none;border-radius:8px;background:linear-gradient(135deg,#2ECC71,#27AE60);color:#fff;cursor:pointer;font-weight:600" id="recBtn" hidden onclick="openRec()">💡 建议</button>
+    <button class="btn btn-secondary" style="padding:5px 10px;font-size:.78rem" onclick="goScreen(1)">返回</button>
   </header>
 
   <div class="sim-body">
@@ -708,7 +716,7 @@ body { font-family: 'PingFang SC','Microsoft YaHei',sans-serif; background:#F0F4
       <div class="cmp-col-header" style="border-top:4px solid #667EEA">
         <span class="cmp-col-badge" style="background:#667EEA">★ 完整系统</span>
         <div class="cmp-col-title">完整系统（本研究）</div>
-        <div class="cmp-col-desc">Logit 模型概率 + 优化提示词</div>
+        <div class="cmp-col-desc">经过语言风格优化</div>
       </div>
       <div class="cmp-scroll" id="cmp-scroll-0"></div>
     </div>
@@ -718,7 +726,7 @@ body { font-family: 'PingFang SC','Microsoft YaHei',sans-serif; background:#F0F4
       <div class="cmp-col-header" style="border-top:4px solid #95A5A6">
         <span class="cmp-col-badge" style="background:#95A5A6">基础提示词组</span>
         <div class="cmp-col-title">基础提示词组</div>
-        <div class="cmp-col-desc">Logit 模型概率 + 基础提示词</div>
+        <div class="cmp-col-desc">未做语言风格优化</div>
       </div>
       <div class="cmp-idle" id="cmp-idle-1">
         <button class="cmp-start-btn" style="background:#95A5A6" onclick="startCmpSim(1)">▶ 生成对话</button>
@@ -1028,7 +1036,7 @@ function startSimulation() {
     if (simTerminalState) return;
     hideLoading();
     simTerminalState = 'error';
-    appendLog({ type:'status', msg:'连接中断，请重试。' });
+    // 连接断开时不显示任何提示
   };
 }
 
@@ -1100,7 +1108,7 @@ function scheduleNext() {
     document.getElementById('stopBtn').disabled = true;
     document.getElementById('cmpBtn').hidden    = false;
     document.getElementById('recBtn').hidden    = false;
-    appendLog({ type:'status', msg:'✅ 模拟完成，已保存历史记录' });
+    appendLog({ type:'status', msg:'✅ 模拟完成' });
     displayTimer = null;
 
   } else if (msg.type === 'canvas') {
@@ -1521,7 +1529,7 @@ function startCmpSim(colIdx) {
     cmpTerminalStates[srcIdx] = 'error';
     idle.style.display = 'flex';
     scroll.style.display = 'none';
-    idle.innerHTML = `<div class="cmp-loading" style="color:#E74C3C">连接中断，请重试</div>`;
+    idle.innerHTML = '';
   };
 }
 
@@ -1529,15 +1537,10 @@ function showCmpHelp() {
   alert(
     '【两种系统对比说明】\n\n' +
     '★ 完整系统（本研究）\n' +
-    '   · 角色概率来自多项 Logit 回归模型\n' +
-    '   · 批次=3，链式回应提示词（每轮明确回应上一轮）\n' +
-    '   · 传入完整对话历史与角色行为规范\n' +
-    '   · 预期效果：发言连贯、角色契合、无自问自答\n\n' +
+    '   · 经过语言风格优化的提示词\n' +
+    '   · 模拟真实课堂口语表达\n\n' +
     '基础提示词组（对照）\n' +
-    '   · 同等角色概率与组型偏置\n' +
-    '   · 批次=5，无链式回应指导\n' +
-    '   · 不传入对话历史\n' +
-    '   · 预期效果：发言较独立、连贯性弱、可能出现自问自答'
+    '   · 未做语言风格优化的基础提示词'
   );
 }
 
