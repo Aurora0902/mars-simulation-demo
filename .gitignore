@@ -1,0 +1,38 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+.Rhistory
+.claude/
+.env
+.venv/
+venv/
+
+# Local run artifacts
+sim_*_web_tmp.txt
+history/*.json
+
+# Research drafts, analysis outputs, and archived experiments are not needed
+# for the web demo deployment.
+_archive/
+outputs/
+simulation_coding/
+simulation_outputs/
+simulation_outputs_llm_predicted/
+mars_simulation_llm_predicted/
+真实课堂编码结果/
+无用过去章节/
+
+*.docx
+MARS_*.md
+*.png
+RQb_analysis.xlsx
+comparison_analysis.xlsx
+data_with_llm_prob.xlsx
+data_with_prob.xlsx
+descriptive_stats.xlsx
+role_distribution.png
+角色分布图_最终版_v2.png
+
+generate_llm_probabilities.py
+picture.py
+run_*.py

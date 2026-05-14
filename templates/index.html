@@ -1,0 +1,1647 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>多智能体小组合作学习模拟系统</title>
+<style>
+/* ── Reset ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'PingFang SC','Microsoft YaHei',sans-serif; background:#F0F4FA; color:#2C3E50; min-height:100vh; }
+
+/* ── Screens ── */
+.screen { display:none; min-height:100vh; }
+.screen.active { display:flex; flex-direction:column; }
+
+/* ════════════════════════
+   S1 — 选组
+════════════════════════ */
+#s1 {
+  align-items:center; justify-content:center;
+  padding:40px 20px;
+  background:linear-gradient(135deg,#667EEA 0%,#764BA2 100%);
+}
+#s1 h1 { color:#fff; font-size:2rem; margin-bottom:6px; letter-spacing:2px; }
+#s1 .subtitle { color:rgba(255,255,255,.75); font-size:.95rem; margin-bottom:32px; }
+.s1-actions { display:flex; gap:12px; margin-bottom:32px; }
+.btn-history {
+  padding:10px 22px; border-radius:30px; border:1.5px solid rgba(255,255,255,.6);
+  color:#fff; background:rgba(255,255,255,.15); cursor:pointer; font-size:.9rem;
+  transition:background .2s;
+}
+.btn-history:hover { background:rgba(255,255,255,.28); }
+.group-grid {
+  display:grid; grid-template-columns:repeat(4,1fr); gap:16px;
+  max-width:940px; width:100%;
+}
+.group-card {
+  background:rgba(255,255,255,.15); backdrop-filter:blur(10px);
+  border:1px solid rgba(255,255,255,.3); border-radius:16px;
+  overflow:hidden; cursor:pointer; text-align:center;
+  transition:transform .2s, background .2s; color:#fff;
+  display:flex; flex-direction:column;
+}
+.group-card:hover { transform:translateY(-5px); background:rgba(255,255,255,.25); box-shadow:0 8px 28px rgba(0,0,0,.18); }
+.gc-stripe { height:6px; width:100%; flex-shrink:0; }
+.gc-body   { padding:22px 14px 20px; display:flex; flex-direction:column; align-items:center; gap:10px; flex:1; }
+.gc-icon   { font-size:2.2rem; line-height:1; }
+.gc-label  { font-size:1rem; font-weight:700; line-height:1.35; }
+.gc-meta   { font-size:.73rem; opacity:.72; }
+
+/* ════════════════════════
+   S2 — 成员预览
+════════════════════════ */
+#s2 { align-items:center; justify-content:flex-start; padding:36px 20px; background:#F0F4FA; overflow-y:auto; }
+.preview-box {
+  background:#fff; border-radius:20px;
+  box-shadow:0 8px 32px rgba(0,0,0,.1);
+  padding:32px 36px; max-width:640px; width:100%;
+  margin: auto;
+}
+.preview-box h2 { font-size:1.4rem; margin-bottom:4px; }
+.preview-meta { color:#888; font-size:.88rem; margin-bottom:24px; }
+.member-grid {
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
+  gap:12px; margin-bottom:24px;
+}
+.member-card {
+  background:#F8F9FF; border-radius:14px;
+  padding:14px 16px; display:flex; gap:14px; align-items:flex-start;
+}
+.member-avatar-lg {
+  width:54px; height:66px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+}
+.member-avatar-lg img { width:54px; height:66px; display:block; }
+.member-info .name-row { font-weight:700; font-size:.95rem; margin-bottom:5px; }
+.member-info .tag-row { display:flex; flex-wrap:wrap; gap:5px; }
+.tag {
+  font-size:.7rem; padding:2px 8px; border-radius:10px;
+  background:#E8EEFF; color:#555; white-space:nowrap;
+}
+.tag.score-good   { background:#E8F8F0; color:#2ECC71; }
+.tag.score-mid    { background:#FFF8E8; color:#F39C12; }
+.tag.score-bad    { background:#FEE; color:#E74C3C; }
+.tag.gender-m     { background:#E8F0FF; color:#4A90D9; }
+.tag.gender-f     { background:#FFE8F5; color:#E91E8C; }
+.tag.friend       { background:#F3E8FF; color:#7B68EE; }
+.tag.speak        { background:#F0F0F0; color:#666; }
+.turns-info {
+  text-align:center; padding:12px 16px; background:#F0F4FA;
+  border-radius:12px; margin-bottom:24px; color:#555; font-size:.9rem;
+}
+.turns-info strong { color:#667EEA; font-size:1.1rem; }
+.btn-row { display:flex; gap:12px; }
+.btn {
+  padding:12px 24px; border:none; border-radius:10px;
+  font-size:.95rem; cursor:pointer; transition:opacity .2s, transform .1s;
+  font-weight:600;
+}
+.btn:active { transform:scale(.97); }
+.btn-primary {
+  flex:1; background:linear-gradient(135deg,#667EEA,#764BA2); color:#fff;
+}
+.btn-secondary { background:#eee; color:#555; }
+.btn-danger    { background:#FEE; color:#E74C3C; }
+
+/* ════════════════════════
+   S3 — 模拟
+════════════════════════ */
+#s3 {
+  background:#F0F4FA;
+  /* 必须是精确高度而非 min-height，否则内容会撑开整个页面 */
+  height:100vh;
+  max-height:100vh;
+  overflow:hidden;
+}
+.sim-header {
+  display:flex; align-items:center; gap:12px;
+  padding:0 20px; height:60px; flex-shrink:0;
+  background:#fff; box-shadow:0 2px 8px rgba(0,0,0,.06);
+}
+.sim-header h2 { font-size:1rem; white-space:nowrap; margin-right:4px; }
+.progress-wrap { display:flex; align-items:center; gap:10px; flex:1; }
+.progress-bar-bg {
+  flex:1; height:8px; background:#E0E7FF; border-radius:4px; overflow:hidden;
+}
+.progress-bar-fill {
+  height:100%; background:linear-gradient(90deg,#667EEA,#764BA2);
+  border-radius:4px; transition:width .4s ease; width:0%;
+}
+.progress-label { font-size:.82rem; color:#888; white-space:nowrap; }
+.phase-badge {
+  padding:4px 12px; border-radius:20px; font-size:.75rem;
+  font-weight:700; color:#fff; background:#667EEA; transition:background .4s;
+  white-space:nowrap;
+}
+
+.sim-body {
+  display:flex; gap:14px; padding:14px 16px;
+  /* 固定高度 = 视口 - 顶栏60px，内容不再往下撑 */
+  height:calc(100vh - 60px);
+  overflow:hidden;
+}
+
+/* ── Classroom ── */
+.classroom {
+  flex:1.4; position:relative; flex-shrink:0;
+  background:#fff; border-radius:16px;
+  box-shadow:0 4px 16px rgba(0,0,0,.07);
+  min-height:460px;
+  /* visible 让气泡能显示到教室边界外，整体布局由 sim-body 固定高度保证 */
+  overflow:visible;
+}
+.classroom-bg {
+  position:absolute; inset:0;
+  background:radial-gradient(ellipse at 50% 110%,#D6E4FF 0%,transparent 60%),
+             linear-gradient(180deg,#EEF2FF 0%,#F8F9FF 100%);
+}
+.blackboard {
+  position:absolute; top:20px; left:50%; transform:translateX(-50%);
+  width:55%; max-width:320px; height:76px;
+  background:#2C6B4F; border-radius:8px; border:5px solid #8B6914;
+  display:flex; align-items:center; justify-content:center;
+  color:rgba(255,255,255,.9); font-size:.82rem; padding:0 14px;
+  text-align:center; line-height:1.45; z-index:1;
+}
+.teacher-wrap {
+  position:absolute; top:98px; left:50%; transform:translateX(-50%);
+  display:flex; flex-direction:column; align-items:center; gap:2px;
+  z-index:4;
+}
+.teacher-fig {
+  width:52px; height:70px; border-radius:12px;
+  transition:filter .25s, transform .25s;
+}
+.teacher-fig.speaking {
+  filter:drop-shadow(0 0 10px rgba(44,107,79,.5));
+  transform:translateY(-2px) scale(1.04);
+}
+.teacher-label {
+  font-size:.7rem; font-weight:700; color:#2C6B4F;
+  background:rgba(255,255,255,.78); padding:1px 7px; border-radius:9px;
+}
+.desk {
+  position:absolute; bottom:52px; left:50%; transform:translateX(-50%);
+  width:74%; max-width:400px; height:92px;
+  background:linear-gradient(180deg,#D4A84B 0%,#B8892D 100%);
+  border-radius:12px;
+  box-shadow:0 7px 0 #8B6914, 0 12px 18px rgba(0,0,0,.14);
+  z-index:1;
+}
+/* avatars positioned in JS with bottom anchoring */
+.avatar-wrap {
+  position:absolute; display:flex; flex-direction:column;
+  align-items:center; gap:3px;
+  /* overflow visible so bubbles show above */
+  overflow:visible; z-index:3;
+}
+.avatar-fig {
+  width:54px; height:70px;
+  filter:drop-shadow(0 2px 6px rgba(0,0,0,.16));
+  transition:filter .25s, transform .25s;
+  position:relative; z-index:3;
+}
+.avatar-fig img { width:54px; height:70px; display:block; }
+.avatar-fig.speaking {
+  filter:drop-shadow(0 0 9px rgba(102,126,234,.65)) drop-shadow(0 4px 8px rgba(0,0,0,.18));
+  transform:scale(1.13);
+}
+.avatar-label {
+  font-size:.72rem; font-weight:700; color:#444;
+  text-align:center; white-space:nowrap; z-index:3;
+  background:rgba(255,255,255,.78); padding:1px 7px; border-radius:9px;
+  max-width:86px; overflow:hidden; text-overflow:ellipsis;
+}
+/* bubble — always above avatar-wrap */
+.bubble {
+  position:absolute;
+  bottom:calc(100% + 6px); left:50%; transform:translateX(-50%) scale(.85);
+  background:#fff; border-radius:13px; padding:8px 13px;
+  font-size:.82rem; line-height:1.55; max-width:320px; min-width:110px;
+  box-shadow:0 4px 16px rgba(0,0,0,.13);
+  pointer-events:none; opacity:0;
+  transition:opacity .25s, transform .25s;
+  word-break:break-all; white-space:normal;
+  z-index:10;
+}
+.bubble.visible {
+  opacity:1; transform:translateX(-50%) scale(1);
+}
+/* down-arrow pointing to avatar */
+.bubble::after {
+  content:''; position:absolute;
+  bottom:-8px; left:50%; transform:translateX(-50%);
+  border:5px solid transparent;
+  border-top-color:#fff; border-bottom:none;
+}
+.bubble-role {
+  display:inline-block; font-size:.62rem; padding:1px 7px;
+  border-radius:9px; color:#fff; margin-bottom:4px; font-weight:700;
+}
+/* teacher bubble */
+.teacher-bubble {
+  position:absolute; top:166px; left:50%; transform:translateX(-50%);
+  background:#2C6B4F; color:#fff;
+  border-radius:12px; padding:8px 14px;
+  font-size:.78rem; max-width:300px; text-align:center;
+  box-shadow:0 4px 16px rgba(0,0,0,.2);
+  opacity:0; transition:opacity .4s;
+  z-index:20; word-break:break-all; line-height:1.5;
+}
+.teacher-bubble.visible { opacity:1; }
+
+.sim-loading {
+  position:absolute; inset:0;
+  background:rgba(255,255,255,.88);
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:14px; font-size:.92rem; color:#667EEA; z-index:50;
+  border-radius:16px;
+  /* 配合 classroom overflow:visible，遮罩自身裁剪到教室范围 */
+  overflow:hidden;
+}
+.spin {
+  width:34px; height:34px; border:4px solid #E0E7FF;
+  border-top-color:#667EEA; border-radius:50%;
+  animation:spin 1s linear infinite;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* ── Log panel ── */
+.log-panel {
+  width:360px; flex-shrink:0; display:flex; flex-direction:column; gap:10px;
+  /* fill sim-body height for scroll to work */
+  align-self:stretch;
+}
+.log-box {
+  flex:1; min-height:0;          /* critical for overflow scroll in flex */
+  background:#fff; border-radius:16px;
+  box-shadow:0 4px 16px rgba(0,0,0,.07);
+  display:flex; flex-direction:column; overflow:hidden;
+}
+.log-box h3 {
+  font-size:.8rem; padding:10px 14px; flex-shrink:0;
+  border-bottom:1px solid #f0f0f0; color:#999; letter-spacing:1px;
+}
+.log-scroll {
+  flex:1; min-height:0;          /* critical */
+  overflow-y:auto; padding:8px 12px;
+  display:flex; flex-direction:column; gap:7px;
+}
+.log-scroll::-webkit-scrollbar { width:4px; }
+.log-scroll::-webkit-scrollbar-thumb { background:#ddd; border-radius:2px; }
+.log-entry {
+  flex-shrink:0;                 /* prevent entries from being squished */
+  display:flex; flex-direction:column; gap:2px;
+  padding:6px 9px; border-radius:8px;
+  border-left:3px solid #ccc; background:#fafafa;
+  font-size:.8rem; animation:fadeIn .28s ease;
+}
+@keyframes fadeIn { from{opacity:0;transform:translateY(3px)} to{opacity:1;transform:none} }
+.log-entry.teacher-entry { border-left-color:#2C6B4F; background:#F0FFF8; }
+.le-header { display:flex; align-items:center; gap:6px; }
+.le-name    { font-weight:700; }
+.le-role    {
+  font-size:.62rem; padding:1px 6px; border-radius:8px;
+  color:#fff; font-weight:700; flex-shrink:0;
+}
+.le-no      { font-size:.68rem; color:#ccc; margin-left:auto; }
+.le-text    { color:#444; line-height:1.5; word-break:break-all; }
+
+/* ── Canvas state ── */
+.canvas-box {
+  flex-shrink:0; background:#fff; border-radius:14px;
+  box-shadow:0 4px 16px rgba(0,0,0,.07);
+  display:flex; flex-direction:column; overflow:hidden;
+  max-height:180px;
+}
+.canvas-box h3 {
+  font-size:.8rem; color:#999; letter-spacing:1px;
+  padding:10px 14px 8px; border-bottom:1px solid #f0f0f0;
+}
+.canvas-scroll {
+  overflow-y:auto; padding:8px 10px;
+  display:flex; flex-direction:column; gap:7px;
+}
+.canvas-scroll::-webkit-scrollbar { width:4px; }
+.canvas-scroll::-webkit-scrollbar-thumb { background:#ddd; border-radius:2px; }
+.canvas-entry {
+  border-left:3px solid #2C6B4F; background:#F7FFFB;
+  border-radius:8px; padding:7px 9px; font-size:.76rem;
+}
+.canvas-meta { color:#2C6B4F; font-weight:700; margin-bottom:5px; }
+.canvas-items { display:flex; flex-direction:column; gap:3px; color:#444; line-height:1.45; }
+.canvas-empty { color:#bbb; font-size:.76rem; padding:4px 2px; }
+
+/* ── Stats ── */
+.stats-box {
+  flex-shrink:0; background:#fff; border-radius:14px;
+  box-shadow:0 4px 16px rgba(0,0,0,.07); padding:12px 14px;
+}
+.stats-box h3 { font-size:.8rem; color:#999; letter-spacing:1px; margin-bottom:10px; }
+.stat-row { display:flex; align-items:center; gap:8px; margin-bottom:7px; font-size:.78rem; }
+.stat-name { width:58px; font-weight:700; white-space:nowrap; flex-shrink:0; }
+.stat-bg   { flex:1; height:7px; background:#EEE; border-radius:4px; overflow:hidden; }
+.stat-fill { height:100%; border-radius:4px; transition:width .4s ease; }
+.stat-cnt  { font-size:.72rem; color:#999; min-width:28px; text-align:right; }
+
+/* ════════════════════════
+   S4 — 历史记录
+════════════════════════ */
+#s4 { background:#F0F4FA; }
+.history-header {
+  display:flex; align-items:center; gap:14px;
+  padding:0 20px; height:60px; flex-shrink:0;
+  background:#fff; box-shadow:0 2px 8px rgba(0,0,0,.06);
+}
+.history-header h2 { font-size:1.1rem; }
+.history-body { flex:1; overflow-y:auto; padding:20px; }
+.history-empty { text-align:center; color:#aaa; padding-top:60px; font-size:.95rem; }
+.hist-group-label {
+  font-size:.78rem; font-weight:700; color:#888; letter-spacing:1px;
+  margin:18px 0 8px; text-transform:uppercase;
+}
+.hist-card {
+  background:#fff; border-radius:14px; padding:14px 18px;
+  margin-bottom:10px; cursor:pointer;
+  box-shadow:0 2px 8px rgba(0,0,0,.06);
+  display:flex; align-items:center; gap:14px;
+  transition:box-shadow .2s, transform .15s;
+}
+.hist-card:hover { box-shadow:0 4px 20px rgba(0,0,0,.1); transform:translateY(-1px); }
+.hist-dot {
+  width:44px; height:44px; border-radius:50%;
+  background:linear-gradient(135deg,#667EEA,#764BA2);
+  display:flex; align-items:center; justify-content:center;
+  color:#fff; font-weight:700; font-size:.85rem; flex-shrink:0;
+}
+.hist-info { flex:1; }
+.hist-info .h-title { font-weight:700; font-size:.92rem; margin-bottom:3px; }
+.hist-info .h-meta  { font-size:.75rem; color:#999; }
+.hist-turns {
+  font-size:.78rem; color:#667EEA; font-weight:700;
+  white-space:nowrap; padding:4px 10px;
+  background:#E8EEFF; border-radius:8px;
+}
+
+/* ── History modal ── */
+.modal-overlay {
+  display:none; position:fixed; inset:0; z-index:200;
+  background:rgba(0,0,0,.45); align-items:center; justify-content:center;
+  padding:20px;
+}
+.modal-overlay.open { display:flex; }
+.modal-box {
+  background:#fff; border-radius:20px; width:100%; max-width:660px;
+  max-height:90vh; display:flex; flex-direction:column;
+  box-shadow:0 16px 48px rgba(0,0,0,.22); overflow:hidden;
+}
+.modal-header {
+  padding:18px 22px; border-bottom:1px solid #f0f0f0;
+  display:flex; align-items:flex-start; justify-content:space-between; flex-shrink:0;
+}
+.modal-header h3 { font-size:1rem; margin-bottom:3px; }
+.modal-header .m-meta { font-size:.78rem; color:#999; }
+.modal-close {
+  background:none; border:none; font-size:1.4rem;
+  cursor:pointer; color:#999; padding:0 4px; line-height:1;
+}
+.modal-log {
+  flex:1; overflow-y:auto; padding:14px 18px;
+  display:flex; flex-direction:column; gap:7px;
+}
+.modal-log::-webkit-scrollbar { width:4px; }
+.modal-log::-webkit-scrollbar-thumb { background:#ddd; border-radius:2px; }
+
+/* ════════════════════════
+   S5 — 提示词对比
+════════════════════════ */
+#s5 { background:#F0F4FA; height:100vh; max-height:100vh; overflow:hidden; }
+.cmp-header {
+  display:flex; align-items:center; gap:10px;
+  padding:0 16px; height:60px; flex-shrink:0;
+  background:#fff; box-shadow:0 2px 8px rgba(0,0,0,.06);
+}
+.cmp-header h2 { font-size:.95rem; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cmp-body {
+  display:flex; gap:10px; padding:10px 12px;
+  height:calc(100vh - 60px); overflow:hidden;
+}
+.cmp-col {
+  flex:1; min-width:0; display:flex; flex-direction:column;
+  background:#fff; border-radius:16px;
+  box-shadow:0 4px 16px rgba(0,0,0,.07); overflow:hidden;
+}
+.cmp-col-header {
+  padding:10px 13px; flex-shrink:0;
+  border-bottom:1px solid #f0f0f0;
+}
+.cmp-col-badge {
+  display:inline-block; font-size:.68rem; padding:2px 8px;
+  border-radius:10px; color:#fff; font-weight:700; margin-bottom:4px;
+}
+.cmp-col-title { font-size:.85rem; font-weight:700; margin-bottom:1px; }
+.cmp-col-desc  { font-size:.7rem; color:#aaa; }
+.cmp-idle {
+  flex:1; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:10px;
+}
+.cmp-idle-hint { font-size:.78rem; color:#bbb; }
+.cmp-start-btn {
+  padding:11px 26px; border:none; border-radius:12px;
+  font-size:.88rem; cursor:pointer; font-weight:600; color:#fff;
+  box-shadow:0 4px 14px rgba(0,0,0,.15);
+  transition:opacity .2s, transform .1s;
+}
+.cmp-start-btn:hover  { opacity:.88; transform:translateY(-1px); }
+.cmp-start-btn:active { transform:scale(.97); }
+.cmp-loading {
+  display:flex; flex-direction:column; align-items:center; gap:10px;
+  color:#999; font-size:.82rem;
+}
+.cmp-scroll {
+  flex:1; min-height:0; overflow-y:auto;
+  padding:8px 10px; display:flex; flex-direction:column; gap:6px;
+}
+.cmp-scroll::-webkit-scrollbar { width:4px; }
+.cmp-scroll::-webkit-scrollbar-thumb { background:#ddd; border-radius:2px; }
+.btn-cmp {
+  padding:7px 16px; border:none; border-radius:10px; cursor:pointer;
+  font-size:.82rem; font-weight:600; color:#fff;
+  background:linear-gradient(135deg,#667EEA,#764BA2);
+  transition:opacity .2s;
+}
+.btn-cmp:hover { opacity:.85; }
+
+/* ── Group type badge (used in S2 preview header) ── */
+.gc-type {
+  display:inline-block; font-size:.65rem; padding:2px 9px;
+  border-radius:10px; color:#fff; font-weight:700;
+  margin-bottom:6px; letter-spacing:.3px;
+}
+
+/* ── Task config ── */
+.task-config-toggle {
+  width:100%; text-align:center; font-size:.82rem; color:#667EEA;
+  background:none; border:1.5px dashed #C5CEF8; border-radius:10px;
+  padding:8px; cursor:pointer; margin-bottom:16px; transition:background .2s;
+}
+.task-config-toggle:hover { background:#F0F4FF; }
+.task-config-panel {
+  display:none; background:#F7F9FF; border-radius:12px;
+  padding:16px 18px; margin-bottom:16px; border:1px solid #E0E7FF;
+}
+.task-config-panel.open { display:block; }
+.task-config-panel label {
+  display:block; font-size:.78rem; color:#667; margin-bottom:3px; margin-top:10px;
+}
+.task-config-panel label:first-of-type { margin-top:0; }
+.task-config-panel input, .task-config-panel textarea {
+  width:100%; padding:7px 10px; border:1px solid #dde; border-radius:8px;
+  font-size:.82rem; font-family:inherit; resize:vertical;
+}
+.task-config-panel textarea { min-height:46px; }
+.task-config-panel .stage-grid {
+  display:grid; grid-template-columns:1fr 1fr; gap:8px 14px;
+}
+
+/* ── Recommendations modal ── */
+.rec-overlay {
+  display:none; position:fixed; inset:0; z-index:300;
+  background:rgba(0,0,0,.5); align-items:center; justify-content:center; padding:20px;
+}
+.rec-overlay.open { display:flex; }
+.rec-box {
+  background:#fff; border-radius:20px; width:100%; max-width:700px;
+  height:min(92vh, 900px); display:flex; flex-direction:column; box-sizing:border-box;
+  box-shadow:0 16px 48px rgba(0,0,0,.25); overflow:hidden;
+}
+.rec-header {
+  padding:18px 22px 14px; border-bottom:1px solid #f0f0f0;
+  display:flex; align-items:flex-start; justify-content:space-between; flex-shrink:0;
+  background:linear-gradient(135deg,#667EEA,#764BA2); color:#fff;
+}
+.rec-header h3 { font-size:1.05rem; margin-bottom:3px; }
+.rec-header .rec-subtitle { font-size:.78rem; opacity:.85; }
+.rec-close {
+  background:none; border:none; font-size:1.4rem;
+  cursor:pointer; color:#fff; padding:0 4px; line-height:1; opacity:.8;
+}
+.rec-body {
+  flex:1; min-height:0; overflow-y:auto; box-sizing:border-box;
+  padding:18px 22px 72px; scroll-padding-bottom:72px;
+}
+.rec-diagnosis {
+  background:#F0F4FF; border-radius:12px; padding:12px 16px;
+  margin-bottom:16px; font-size:.84rem; color:#444; line-height:1.6;
+}
+.rec-risk {
+  background:#FFF8E8; border-radius:12px; padding:10px 14px;
+  margin-bottom:16px; font-size:.8rem; color:#7A5C00; line-height:1.5;
+  border-left:4px solid #F39C12;
+}
+.rec-item {
+  border:1px solid #E8EEFF; border-radius:12px;
+  padding:14px 16px; margin-bottom:12px;
+}
+.rec-item-title { font-weight:700; font-size:.9rem; margin-bottom:6px; color:#333; }
+.rec-item-content { font-size:.82rem; color:#555; line-height:1.65; margin-bottom:8px; }
+.rec-citation {
+  font-size:.72rem; color:#667EEA; background:#F0F4FF;
+  padding:3px 9px; border-radius:8px; display:inline-block;
+}
+.rec-llm-body {
+  font-size:.84rem; color:#444; line-height:1.72; overflow:visible;
+  word-break:break-word;
+}
+.rec-llm-body p { margin:0 0 12px; }
+.rec-llm-body > *:last-child { margin-bottom:0; }
+.rec-llm-body .rec-item-title {
+  margin-top:14px; margin-bottom:6px;
+  padding:8px 14px; background:#F0F4FF;
+  border-radius:10px; border-left:4px solid #667EEA;
+}
+.rec-llm-body .rec-citation {
+  margin-top:4px; display:block;
+}
+
+/* responsive */
+@media(max-width:800px){
+  .group-grid { grid-template-columns:repeat(2,1fr); }
+  .sim-body   { flex-direction:column; overflow:auto; }
+  .log-panel  { width:100%; height:auto; }
+  .cmp-body   { flex-direction:column; overflow:auto; }
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════════ S1 — 选组 ══════════════ -->
+<section id="s1" class="screen active">
+  <h1>🏫 MARS 小组合作模拟</h1>
+  <p class="subtitle">选择一个典型合作学习小组，观察不同分组方式下的课堂互动差异</p>
+  <div class="s1-actions">
+    <button class="btn-history" onclick="goScreen(4)">📋 历史记录</button>
+  </div>
+  <div class="group-grid" id="groupGrid"></div>
+</section>
+
+<!-- ══════════════ S2 — 成员预览 ══════════════ -->
+<section id="s2" class="screen">
+  <div class="preview-box">
+    <h2 id="previewTitle"></h2>
+    <p class="preview-meta" id="previewMeta"></p>
+    <div class="member-grid" id="memberGrid"></div>
+    <div class="turns-info">
+      本次将模拟 <strong id="turnsDisplay">—</strong> 轮学生对话
+    </div>
+
+    <!-- 任务配置（可展开） -->
+    <button class="task-config-toggle" onclick="toggleTaskConfig()">
+      ⚙️ 自定义任务与阶段设置（点击展开）
+    </button>
+    <div class="task-config-panel" id="taskConfigPanel">
+      <label>任务主题</label>
+      <input id="cfg_task" type="text" value="设计一个创意生态角" placeholder="例：设计一面班级文化墙">
+      <div class="stage-grid">
+        <div>
+          <label>阶段1 名称</label>
+          <input id="cfg_s1name" type="text" value="主题确定">
+        </div>
+        <div>
+          <label>阶段1 描述</label>
+          <textarea id="cfg_s1desc">讨论并确定创作的主题、风格。</textarea>
+        </div>
+        <div>
+          <label>阶段2 名称</label>
+          <input id="cfg_s2name" type="text" value="内容扩充">
+        </div>
+        <div>
+          <label>阶段2 描述</label>
+          <textarea id="cfg_s2desc">讨论并确定画面中的具体元素、构图、色彩。</textarea>
+        </div>
+        <div>
+          <label>阶段3 名称</label>
+          <input id="cfg_s3name" type="text" value="分工合作">
+        </div>
+        <div>
+          <label>阶段3 描述</label>
+          <textarea id="cfg_s3desc">讨论并确定每个人的绘画任务。</textarea>
+        </div>
+        <div>
+          <label>阶段4 名称</label>
+          <input id="cfg_s4name" type="text" value="检查与润色">
+        </div>
+        <div>
+          <label>阶段4 描述</label>
+          <textarea id="cfg_s4desc">检查画面，进行最后的修改与润色。</textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="goScreen(1)">← 返回</button>
+      <button class="btn btn-primary" onclick="startSimulation()">▶ 开始模拟</button>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ S3 — 模拟 ══════════════ -->
+<section id="s3" class="screen">
+  <header class="sim-header">
+    <h2 id="simTitle"></h2>
+    <div class="progress-wrap">
+      <div class="progress-bar-bg"><div class="progress-bar-fill" id="progressFill"></div></div>
+      <span class="progress-label" id="progressLabel">0 / —</span>
+    </div>
+    <span class="phase-badge" id="phaseBadge">S1 确定主题</span>
+    <button class="btn btn-danger"    id="stopBtn"   style="padding:7px 16px;font-size:.85rem;margin-left:10px" onclick="stopSim()">⏹ 停止</button>
+    <button class="btn-cmp"           id="cmpBtn"    style="margin-left:6px" hidden onclick="goCompare()">📊 提示词对比</button>
+    <button style="padding:7px 16px;font-size:.85rem;margin-left:6px;border:none;border-radius:10px;background:linear-gradient(135deg,#2ECC71,#27AE60);color:#fff;cursor:pointer;font-weight:600" id="recBtn" hidden onclick="openRec()">💡 教学建议</button>
+    <button class="btn btn-secondary"                style="padding:7px 16px;font-size:.85rem;margin-left:6px"  onclick="goScreen(1)">返回</button>
+  </header>
+
+  <div class="sim-body">
+    <!-- 教室场景 -->
+    <div class="classroom" id="classroom">
+      <div class="classroom-bg"></div>
+      <div class="blackboard" id="blackboard">设计一个创意生态角</div>
+      <div class="teacher-wrap">
+        <img class="teacher-fig" id="teacherFig" alt="老师" src="">
+        <div class="teacher-label">老师</div>
+      </div>
+      <div class="desk"></div>
+      <div class="teacher-bubble" id="teacherBubble"></div>
+      <div class="sim-loading" id="simLoading">
+        <div class="spin"></div>
+        <span>正在初始化模拟…</span>
+      </div>
+    </div>
+
+    <!-- 右侧面板 -->
+    <div class="log-panel">
+      <div class="log-box">
+        <h3>💬 对话记录</h3>
+        <div class="log-scroll" id="logScroll"></div>
+      </div>
+      <!-- canvas-box 已隐藏（画面状态由后端维护，不在 UI 显示） -->
+      <div id="canvasScroll" style="display:none"></div>
+      <div class="stats-box">
+        <h3>📊 发言统计</h3>
+        <div id="statsRows"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ S5 — 提示词对比 ══════════════ -->
+<section id="s5" class="screen">
+  <header class="cmp-header">
+    <button class="btn btn-secondary" style="padding:7px 14px;font-size:.82rem;flex-shrink:0" onclick="goScreen(3)">← 返回模拟</button>
+    <h2 id="cmpTitle">提示词对比</h2>
+    <button style="padding:5px 12px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;font-size:.78rem;color:#666;flex-shrink:0" onclick="showCmpHelp()">? 说明</button>
+  </header>
+  <div class="cmp-body">
+
+    <!-- 列 0：完整系统（已生成） -->
+    <div class="cmp-col">
+      <div class="cmp-col-header" style="border-top:4px solid #667EEA">
+        <span class="cmp-col-badge" style="background:#667EEA">★ 完整系统</span>
+        <div class="cmp-col-title">完整系统（本研究）</div>
+        <div class="cmp-col-desc">Logit 模型概率 + 优化提示词</div>
+      </div>
+      <div class="cmp-scroll" id="cmp-scroll-0"></div>
+    </div>
+
+    <!-- 列 1：基础提示词组 -->
+    <div class="cmp-col">
+      <div class="cmp-col-header" style="border-top:4px solid #95A5A6">
+        <span class="cmp-col-badge" style="background:#95A5A6">基础提示词组</span>
+        <div class="cmp-col-title">基础提示词组</div>
+        <div class="cmp-col-desc">Logit 模型概率 + 基础提示词</div>
+      </div>
+      <div class="cmp-idle" id="cmp-idle-1">
+        <button class="cmp-start-btn" style="background:#95A5A6" onclick="startCmpSim(1)">▶ 生成对话</button>
+        <span class="cmp-idle-hint">点击开始生成此条件的对话</span>
+      </div>
+      <div class="cmp-scroll" id="cmp-scroll-1" style="display:none"></div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ══════════════ S4 — 历史记录 ══════════════ -->
+<section id="s4" class="screen">
+  <header class="history-header">
+    <button class="btn btn-secondary" style="padding:7px 16px;font-size:.85rem" onclick="goScreen(1)">← 返回</button>
+    <h2>历史模拟记录</h2>
+  </header>
+  <div class="history-body" id="historyBody">
+    <p class="history-empty">加载中…</p>
+  </div>
+</section>
+
+<!-- ══════════════ 历史详情 Modal ══════════════ -->
+<div class="modal-overlay" id="histModal" onclick="closeModal(event)">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div>
+        <h3 id="modalTitle"></h3>
+        <div class="m-meta" id="modalMeta"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-log" id="modalLog"></div>
+  </div>
+</div>
+
+<!-- ══════════════ 教学建议 Modal ══════════════ -->
+<div class="rec-overlay" id="recModal" onclick="closeRec(event)">
+  <div class="rec-box">
+    <div class="rec-header">
+      <div>
+        <h3 id="recTitle">💡 教学设计建议</h3>
+        <div class="rec-subtitle" id="recSubtitle"></div>
+      </div>
+      <button class="rec-close" onclick="closeRec()">✕</button>
+    </div>
+    <div class="rec-body" id="recBody">
+      <div style="text-align:center;color:#aaa;padding:30px">加载中…</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════
+// Constants
+// ══════════════════════════════════
+const AVATAR_COLORS = ['#667EEA','#E74C3C','#2ECC71','#F39C12','#9B59B6','#1ABC9C'];
+const PHASE_LABELS  = { S1:'S1 确定主题', S2:'S2 讨论画面', S3:'S3 分工画画', S4:'S4 检查完稿' };
+const PHASE_COLORS  = { S1:'#667EEA', S2:'#2ECC71', S3:'#F39C12', S4:'#E74C3C' };
+
+const GROUP_TYPE_COLORS = {
+  high_ability:   '#4A90D9',
+  low_ability:    '#E74C3C',
+  mixed_ability:  '#2ECC71',
+  medium_ability: '#F39C12',
+  friendship:     '#FF69B4',
+  conflict:       '#9B59B6',
+};
+const GROUP_TYPE_LABELS = {
+  high_ability:   '高成就同质',
+  low_ability:    '低成就同质',
+  mixed_ability:  '能力异质',
+  medium_ability: '中等同质',
+  friendship:     '友伴关系',
+  conflict:       '冲突竞争',
+};
+const GROUP_TYPE_ICONS = {
+  high_ability:   '🏆',
+  low_ability:    '📝',
+  mixed_ability:  '🔀',
+  medium_ability: '⚖️',
+  friendship:     '🤝',
+  conflict:       '⚡',
+};
+
+function avatarSvg(kind, color) {
+  const isGirl = kind === 'F';
+  const isTeacher = kind === 'teacher';
+  const hair = isTeacher ? '#3A2A21' : (isGirl ? '#4A2E24' : '#2F2B28');
+  const shirt = isTeacher ? '#2C6B4F' : color;
+  const accent = isTeacher ? '#F5D6A8' : (isGirl ? '#FFB6D5' : '#A7D8FF');
+  const hairShape = isGirl || isTeacher
+    ? `<path d="M16 28c0-12 8-21 20-21s20 9 20 21v15H16z" fill="${hair}"/>
+       <path d="M13 33c3-10 9-18 23-18s20 8 23 18c-4-5-8-7-13-8-5 4-15 4-20 0-5 1-9 3-13 8z" fill="${hair}"/>`
+    : `<path d="M15 27c2-12 10-19 21-19 12 0 20 8 21 19-8-4-14-7-22-7-7 0-13 3-20 7z" fill="${hair}"/>`;
+  const extra = isTeacher
+    ? `<rect x="17" y="49" width="38" height="22" rx="10" fill="${shirt}"/>
+       <path d="M27 50h18l-9 9z" fill="#fff"/>
+       <circle cx="23" cy="28" r="3" fill="#F2C6A4"/><circle cx="49" cy="28" r="3" fill="#F2C6A4"/>`
+    : `<path d="M18 52c3-7 9-11 18-11s15 4 18 11l4 17H14z" fill="${shirt}"/>
+       <path d="M27 48h18l-9 8z" fill="${accent}" opacity=".95"/>
+       ${isGirl ? '<circle cx="15" cy="30" r="4" fill="#FFB6D5"/><circle cx="57" cy="30" r="4" fill="#FFB6D5"/>' : ''}`;
+  return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" width="72" height="84" viewBox="0 0 72 84">
+      <ellipse cx="36" cy="76" rx="22" ry="5" fill="#000" opacity=".12"/>
+      ${hairShape}
+      <circle cx="36" cy="30" r="18" fill="#FFD7B5"/>
+      <path d="M22 23c7 2 19 2 28-4 3 3 5 7 5 11v-8C52 12 44 7 36 7 27 7 18 13 17 25v6c1-3 2-6 5-8z" fill="${hair}"/>
+      <circle cx="29" cy="31" r="2.2" fill="#3A312B"/>
+      <circle cx="43" cy="31" r="2.2" fill="#3A312B"/>
+      <path d="M30 39c4 3 8 3 12 0" stroke="#B05D4E" stroke-width="2" stroke-linecap="round" fill="none"/>
+      ${extra}
+    </svg>`);
+}
+
+function getPhase(turn, total) {
+  const r = turn / total;
+  if (r <= 0.30) return 'S1';
+  if (r <= 0.60) return 'S2';
+  if (r <= 0.90) return 'S3';
+  return 'S4';
+}
+
+// ══════════════════════════════════
+// State
+// ══════════════════════════════════
+let currentGroupId   = null;
+let currentGroupType = null;
+let members          = [];
+let totalTurns       = 0;
+let memberStats      = {};
+let evtSource        = null;
+let avatarEls        = {};
+let bubbleTimers     = {};
+let mainSimLog       = [];
+let cmpSources       = [null];
+let cmpTerminalStates = [null];
+
+// 消息队列：控制对话呈现速度，让每条发言都能看清
+let msgQueue      = [];
+let displayTimer  = null;
+let simTerminalState = null; // null | 'done' | 'error' | 'stopped'
+const TURN_DELAY   = 3000;  // 学生发言间隔 (ms)
+const TEACH_DELAY  = 5000;  // 教师发言间隔 (ms)
+
+// ══════════════════════════════════
+// Navigation
+// ══════════════════════════════════
+function goScreen(n) {
+  if (n !== 3 && evtSource) { evtSource.close(); evtSource = null; }
+  if (n !== 3 && displayTimer) { clearTimeout(displayTimer); displayTimer = null; msgQueue = []; }
+  if (n !== 5) {
+    cmpSources.forEach((s, i) => { if (s) { s.close(); cmpSources[i] = null; } });
+    cmpTerminalStates = [null];
+  }
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('s' + n).classList.add('active');
+  if (n === 4) loadHistory();
+}
+
+// ══════════════════════════════════
+// S1 — Build group cards
+// ══════════════════════════════════
+async function buildGroupCards() {
+  const resp   = await fetch('/api/groups');
+  const groups = await resp.json();
+  const grid   = document.getElementById('groupGrid');
+  grid.innerHTML = '';
+
+  for (const [gid, info] of Object.entries(groups)) {
+    const typeColor = GROUP_TYPE_COLORS[info.type] || '#888';
+    const typeIcon  = GROUP_TYPE_ICONS[info.type]  || '👥';
+    const card = document.createElement('div');
+    card.className = 'group-card';
+    card.innerHTML = `
+      <div class="gc-stripe" style="background:${typeColor}"></div>
+      <div class="gc-body">
+        <div class="gc-icon">${typeIcon}</div>
+        <div class="gc-label">${info.label}</div>
+        <div class="gc-meta">${info.members.length} 名成员 · ${info.sim_turns || info.base_turns} 轮</div>
+      </div>`;
+    card.onclick = () => openPreview(parseInt(gid), info);
+    grid.appendChild(card);
+  }
+}
+
+// ══════════════════════════════════
+// S2 — Preview & Task Config
+// ══════════════════════════════════
+function toggleTaskConfig() {
+  const panel = document.getElementById('taskConfigPanel');
+  const btn   = document.querySelector('.task-config-toggle');
+  const open  = panel.classList.toggle('open');
+  btn.textContent = open
+    ? '⚙️ 自定义任务与阶段设置（点击收起）'
+    : '⚙️ 自定义任务与阶段设置（点击展开）';
+}
+
+function getTaskConfig() {
+  const v = id => document.getElementById(id)?.value?.trim();
+  return {
+    task:    v('cfg_task')    || '设计一个创意生态角',
+    s1name:  v('cfg_s1name')  || '主题确定',
+    s1desc:  v('cfg_s1desc')  || '讨论并确定创作的主题、风格。',
+    s2name:  v('cfg_s2name')  || '内容扩充',
+    s2desc:  v('cfg_s2desc')  || '讨论并确定画面中的具体元素、构图、色彩。',
+    s3name:  v('cfg_s3name')  || '分工合作',
+    s3desc:  v('cfg_s3desc')  || '讨论并确定每个人的绘画任务。',
+    s4name:  v('cfg_s4name')  || '检查与润色',
+    s4desc:  v('cfg_s4desc')  || '检查画面，进行最后的修改与润色。',
+  };
+}
+
+function openPreview(gid, info) {
+  currentGroupId   = gid;
+  currentGroupType = info.type;
+  members          = info.members;
+  totalTurns       = info.base_turns;
+
+  const typeColor = GROUP_TYPE_COLORS[info.type] || '#888';
+  const typeLabel = GROUP_TYPE_LABELS[info.type] || info.type;
+  document.getElementById('previewTitle').textContent = info.label;
+  document.getElementById('previewMeta').innerHTML =
+    `<span style="display:inline-block;padding:2px 10px;border-radius:10px;background:${typeColor};color:#fff;font-size:.75rem;font-weight:700;margin-right:8px">${typeLabel}</span>` +
+    `共 ${members.length} 名成员 &nbsp;·&nbsp; ${info.description}`;
+  document.getElementById('turnsDisplay').textContent = info.sim_turns || info.base_turns;
+
+  const grid = document.getElementById('memberGrid');
+  grid.innerHTML = '';
+
+  members.forEach((m, i) => {
+    const color = AVATAR_COLORS[i];
+    const card  = document.createElement('div');
+    card.className = 'member-card';
+
+    const genderTag  = m.gender === 'M'
+      ? '<span class="tag gender-m">👦 男生</span>'
+      : '<span class="tag gender-f">👧 女生</span>';
+    const scoreClass = m.score_label === '成绩较好' ? 'score-good'
+                     : m.score_label === '成绩较差' ? 'score-bad' : 'score-mid';
+    const scoreTag   = `<span class="tag ${scoreClass}">📊 ${m.score_label}</span>`;
+    const friendTag  = m.friend_disp
+      ? `<span class="tag friend">💛 与${m.friend_disp}是好友</span>` : '';
+    const speakTag   = `<span class="tag speak">🗣 发言占比 ${m.speaking_pct}%</span>`;
+
+    card.innerHTML = `
+      <div class="member-avatar-lg"><img alt="${m.display}" src="${avatarSvg(m.gender, color)}"></div>
+      <div class="member-info">
+        <div class="name-row">${m.display}</div>
+        <div class="tag-row">
+          ${genderTag}${scoreTag}${friendTag}${speakTag}
+        </div>
+      </div>`;
+    grid.appendChild(card);
+  });
+
+  goScreen(2);
+}
+
+// ══════════════════════════════════
+// S3 — Simulation
+// ══════════════════════════════════
+function startSimulation() {
+  totalTurns = 0;
+  memberStats = {};
+  mainSimLog  = [];
+  simTerminalState = null;
+  members.forEach(m => { memberStats[m.name] = 0; });
+
+  const cfg = getTaskConfig();
+
+  // 同步阶段标签
+  PHASE_LABELS['S1'] = `S1 ${cfg.s1name}`;
+  PHASE_LABELS['S2'] = `S2 ${cfg.s2name}`;
+  PHASE_LABELS['S3'] = `S3 ${cfg.s3name}`;
+  PHASE_LABELS['S4'] = `S4 ${cfg.s4name}`;
+
+  document.getElementById('simTitle').textContent     = document.getElementById('previewTitle').textContent;
+  document.getElementById('blackboard').textContent   = cfg.task;
+  document.getElementById('progressFill').style.width = '0%';
+  document.getElementById('progressLabel').textContent = '0 / …';
+  document.getElementById('phaseBadge').textContent   = PHASE_LABELS['S1'];
+  document.getElementById('phaseBadge').style.background = PHASE_COLORS['S1'];
+  document.getElementById('logScroll').innerHTML      = '';
+  document.getElementById('canvasScroll').innerHTML   = '<div class="canvas-empty">等待画面线索更新…</div>';
+  document.getElementById('statsRows').innerHTML      = '';
+  document.getElementById('teacherBubble').classList.remove('visible');
+  document.getElementById('teacherFig').classList.remove('speaking');
+  document.getElementById('teacherFig').src = avatarSvg('teacher', '#2C6B4F');
+  document.getElementById('stopBtn').disabled = false;
+  document.getElementById('cmpBtn').hidden    = true;
+  document.getElementById('recBtn').hidden    = true;
+
+  document.querySelectorAll('.avatar-wrap').forEach(el => el.remove());
+  avatarEls    = {};
+  bubbleTimers = {};
+
+  goScreen(3);
+  document.getElementById('simLoading').style.display = 'flex';
+
+  if (evtSource) evtSource.close();
+  const params = new URLSearchParams(cfg);
+  evtSource = new EventSource(`/api/simulate/${currentGroupId}?${params.toString()}`);
+  evtSource.onmessage = e => handleMsg(JSON.parse(e.data));
+  evtSource.onerror   = () => {
+    if (evtSource) { evtSource.close(); evtSource = null; }
+    if (simTerminalState) return;
+    hideLoading();
+    simTerminalState = 'error';
+    appendLog({ type:'status', msg:'连接中断，请重试。' });
+  };
+}
+
+function stopSim() {
+  simTerminalState = 'stopped';
+  if (evtSource)     { evtSource.close(); evtSource = null; }
+  if (displayTimer)  { clearTimeout(displayTimer); displayTimer = null; }
+  msgQueue = [];   // 清空未展示的消息
+  document.getElementById('stopBtn').disabled = true;
+  appendLog({ type:'status', msg:'⏹ 模拟已手动停止' });
+}
+
+function hideLoading() {
+  document.getElementById('simLoading').style.display = 'none';
+}
+
+// ── Message handler：SSE 消息到来时推入队列 ──
+function handleMsg(msg) {
+  if (msg.type === 'init') {
+    // init 立即处理，不入队
+    buildAvatars(msg.members);
+    totalTurns = msg.turns;
+    document.getElementById('progressLabel').textContent = `0 / ${totalTurns}`;
+    hideLoading();
+    return;
+  }
+  if (msg.type === 'error') {
+    simTerminalState = 'error';
+    if (evtSource) { evtSource.close(); evtSource = null; }
+    if (displayTimer) { clearTimeout(displayTimer); displayTimer = null; }
+    msgQueue = [];
+    hideLoading();
+    document.getElementById('stopBtn').disabled = true;
+    document.getElementById('cmpBtn').hidden = true;
+    appendLog({ type:'status', msg:'⚠️ ' + msg.msg });
+    return;
+  }
+  if (msg.type === 'done') {
+    simTerminalState = 'done';
+  }
+  // 存入完整记录供对比视图使用
+  if (msg.type === 'turn' || msg.type === 'teacher') mainSimLog.push(msg);
+  // turn / teacher / canvas / done / status 全部入队，按节奏逐条展示
+  msgQueue.push(msg);
+  if (!displayTimer) scheduleNext();
+}
+
+// ── 队列播放器：每隔固定时间取出一条消息展示 ──
+function scheduleNext() {
+  if (msgQueue.length === 0) { displayTimer = null; return; }
+  const msg = msgQueue.shift();
+
+  if (msg.type === 'teacher') {
+    showTeacherBubble(msg.text);
+    appendLog(msg);
+    displayTimer = setTimeout(scheduleNext, TEACH_DELAY);
+
+  } else if (msg.type === 'turn') {
+    updateProgress(msg.turn, msg.total);
+    updatePhase(msg.turn, msg.total);
+    showBubble(msg);
+    appendLog(msg);
+    updateStats(msg.speaker);
+    displayTimer = setTimeout(scheduleNext, TURN_DELAY);
+
+  } else if (msg.type === 'done') {
+    simTerminalState = 'done';
+    if (evtSource) { evtSource.close(); evtSource = null; }
+    document.getElementById('stopBtn').disabled = true;
+    document.getElementById('cmpBtn').hidden    = false;
+    document.getElementById('recBtn').hidden    = false;
+    appendLog({ type:'status', msg:'✅ 模拟完成，已保存历史记录' });
+    displayTimer = null;
+
+  } else if (msg.type === 'canvas') {
+    appendCanvasState(msg);
+    displayTimer = setTimeout(scheduleNext, 300);
+
+  } else {
+    // status 等其他消息
+    appendLog(msg);
+    displayTimer = setTimeout(scheduleNext, 200);
+  }
+}
+
+// ── Build avatars ──
+function buildAvatars(memberList) {
+  const classroom = document.getElementById('classroom');
+  const n         = memberList.length;
+  const seats     = computeSeats(n);
+
+  memberList.forEach((m, i) => {
+    const color = AVATAR_COLORS[i];
+    const wrap  = document.createElement('div');
+    wrap.className = 'avatar-wrap';
+
+    // Bottom-anchored positioning: consistent regardless of classroom height
+    wrap.style.left       = (seats[i].x * 100) + '%';
+    wrap.style.bottom     = seats[i].b + 'px';
+    wrap.style.transform  = 'translateX(-50%)';
+
+    const fig = document.createElement('div');
+    fig.className = 'avatar-fig';
+    const img = document.createElement('img');
+    img.alt = m.display;
+    img.src = avatarSvg(m.gender, color);
+    fig.appendChild(img);
+
+    const label = document.createElement('div');
+    label.className = 'avatar-label';
+    label.textContent = m.display;
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    // bubble is positioned with CSS: bottom: calc(100% + 6px) relative to wrap
+
+    wrap.appendChild(bubble);
+    wrap.appendChild(fig);
+    wrap.appendChild(label);
+    classroom.appendChild(wrap);
+
+    avatarEls[m.name] = { wrap, fig, bubble };
+  });
+}
+
+function computeSeats(n) {
+  // x: horizontal fraction (0–1), b: bottom pixels from classroom floor
+  // Desk bottom is at 52px, height 92px → desk top at 144px from classroom bottom
+  // Avatars at b≈148px → avatar bottom 148px, avatar top ≈148+46=194px from bottom
+  // Bubble above wrap: 194 + wrap_label(20) + 6 gap + bubble height ≈ good
+  const b = 148;
+  if (n === 3) return [
+    { x: 0.21, b }, { x: 0.50, b }, { x: 0.79, b }
+  ];
+  if (n === 4) return [
+    { x: 0.17, b }, { x: 0.38, b }, { x: 0.62, b }, { x: 0.83, b }
+  ];
+  if (n === 5) return [
+    { x: 0.12, b }, { x: 0.30, b }, { x: 0.50, b }, { x: 0.70, b }, { x: 0.88, b }
+  ];
+  return Array.from({ length:n }, (_, i) => ({
+    x: 0.15 + (i / (n-1)) * 0.70, b
+  }));
+}
+
+// ── Bubble ──
+function showBubble(msg) {
+  // Clear all highlights
+  Object.values(avatarEls).forEach(({ fig, bubble }) => {
+    fig.classList.remove('speaking');
+    bubble.classList.remove('visible');
+    bubble.innerHTML = '';
+  });
+
+  const el = avatarEls[msg.speaker];
+  if (!el) return;
+
+  el.fig.classList.add('speaking');
+  el.bubble.innerHTML =
+    `<span class="bubble-role" style="background:${msg.color}">${msg.role}</span><br>${msg.text}`;
+  el.bubble.classList.add('visible');
+
+  clearTimeout(bubbleTimers[msg.speaker]);
+  bubbleTimers[msg.speaker] = setTimeout(() => {
+    el.bubble.classList.remove('visible');
+    el.fig.classList.remove('speaking');
+  }, 5500);
+}
+
+function showTeacherBubble(text) {
+  const tb = document.getElementById('teacherBubble');
+  const tf = document.getElementById('teacherFig');
+  tb.textContent = text;
+  tf.classList.add('speaking');
+  tb.classList.add('visible');
+  setTimeout(() => {
+    tb.classList.remove('visible');
+    tf.classList.remove('speaking');
+  }, 7000);
+}
+
+// ── Progress / Phase ──
+function updateProgress(turn, total) {
+  const pct = (turn / total * 100).toFixed(1);
+  document.getElementById('progressFill').style.width     = pct + '%';
+  document.getElementById('progressLabel').textContent    = `${turn} / ${total}`;
+}
+
+function updatePhase(turn, total) {
+  const ph = getPhase(turn, total);
+  const badge = document.getElementById('phaseBadge');
+  badge.textContent        = PHASE_LABELS[ph];
+  badge.style.background   = PHASE_COLORS[ph];
+}
+
+// ── Log ──
+function appendLog(msg) {
+  const scroll = document.getElementById('logScroll');
+  const entry  = document.createElement('div');
+
+  if (msg.type === 'teacher') {
+    entry.className = 'log-entry teacher-entry';
+    entry.innerHTML = `
+      <div class="le-header">
+        <span class="le-name" style="color:#2C6B4F">👩‍🏫 老师</span>
+      </div>
+      <div class="le-text">${msg.text}</div>`;
+  } else if (msg.type === 'turn') {
+    entry.className = 'log-entry';
+    entry.style.borderLeftColor = msg.color;
+    entry.innerHTML = `
+      <div class="le-header">
+        <span class="le-name">${msg.display}</span>
+        <span class="le-role" style="background:${msg.color}">${msg.role}</span>
+        <span class="le-no">#${msg.turn}</span>
+      </div>
+      <div class="le-text">${msg.text}</div>`;
+  } else {
+    entry.className = 'log-entry';
+    entry.style.borderLeftColor = '#ddd';
+    entry.innerHTML = `<div class="le-text" style="color:#aaa;font-size:.76rem">${msg.msg}</div>`;
+  }
+
+  scroll.appendChild(entry);
+  // Auto-scroll to bottom
+  scroll.scrollTop = scroll.scrollHeight;
+}
+
+function appendCanvasState(msg) {
+  const scroll = document.getElementById('canvasScroll');
+  if (scroll.querySelector('.canvas-empty')) scroll.innerHTML = '';
+
+  const entry = document.createElement('div');
+  entry.className = 'canvas-entry';
+
+  const meta = document.createElement('div');
+  meta.className = 'canvas-meta';
+  meta.textContent = `第 ${msg.turn} / ${msg.total} 轮后`;
+  entry.appendChild(meta);
+
+  const items = document.createElement('div');
+  items.className = 'canvas-items';
+  const list = Array.isArray(msg.items) && msg.items.length ? msg.items : ['（暂无有效画面线索）'];
+  list.forEach(text => {
+    const line = document.createElement('div');
+    line.textContent = text;
+    items.appendChild(line);
+  });
+  entry.appendChild(items);
+
+  scroll.appendChild(entry);
+  scroll.scrollTop = scroll.scrollHeight;
+}
+
+// ── Stats ──
+function updateStats(speakerName) {
+  memberStats[speakerName] = (memberStats[speakerName] || 0) + 1;
+  const total   = Object.values(memberStats).reduce((a,b)=>a+b,0) || 1;
+  const sorted  = [...members].sort((a,b)=>(memberStats[b.name]||0)-(memberStats[a.name]||0));
+  const container = document.getElementById('statsRows');
+  container.innerHTML = '';
+  sorted.forEach(m => {
+    const cnt   = memberStats[m.name] || 0;
+    const pct   = (cnt / total * 100).toFixed(0);
+    const color = AVATAR_COLORS[members.findIndex(x=>x.name===m.name)];
+    const row   = document.createElement('div');
+    row.className = 'stat-row';
+    row.innerHTML = `
+      <span class="stat-name" style="color:${color}">${m.display}</span>
+      <div class="stat-bg"><div class="stat-fill" style="width:${pct}%;background:${color}"></div></div>
+      <span class="stat-cnt">${cnt}轮</span>`;
+    container.appendChild(row);
+  });
+}
+
+// ══════════════════════════════════
+// S5 — 提示词对比
+// ══════════════════════════════════
+function goCompare() {
+  // 关闭上次可能残留的对比流
+  cmpSources.forEach((s, i) => { if (s) { s.close(); cmpSources[i] = null; } });
+
+  goScreen(5);
+  document.getElementById('cmpTitle').textContent =
+    document.getElementById('simTitle').textContent + ' · 提示词对比';
+
+  // 重置基础提示词组列
+  [1].forEach(i => {
+    document.getElementById(`cmp-idle-${i}`).style.display   = 'flex';
+    document.getElementById(`cmp-scroll-${i}`).style.display = 'none';
+    document.getElementById(`cmp-scroll-${i}`).innerHTML     = '';
+  });
+
+  // 用完整系统的已生成记录填充列 0
+  const scroll0 = document.getElementById('cmp-scroll-0');
+  scroll0.innerHTML = '';
+  mainSimLog.forEach(msg => {
+    const entry = renderCmpEntry(msg);
+    if (entry) scroll0.appendChild(entry);
+  });
+}
+
+function renderCmpEntry(msg) {
+  const entry = document.createElement('div');
+  if (msg.type === 'teacher') {
+    entry.className = 'log-entry teacher-entry';
+    entry.innerHTML = `
+      <div class="le-header"><span class="le-name" style="color:#2C6B4F">👩‍🏫 老师</span></div>
+      <div class="le-text">${msg.text}</div>`;
+  } else if (msg.type === 'turn') {
+    entry.className = 'log-entry';
+    entry.style.borderLeftColor = msg.color;
+    entry.innerHTML = `
+      <div class="le-header">
+        <span class="le-name">${msg.display}</span>
+        <span class="le-role" style="background:${msg.color}">${msg.role}</span>
+        <span class="le-no">#${msg.turn}</span>
+      </div>
+      <div class="le-text">${msg.text}</div>`;
+  } else {
+    return null;
+  }
+  return entry;
+}
+
+// ══════════════════════════════════
+// Recommendations
+// ══════════════════════════════════
+function _calcSimStats() {
+  // 从 mainSimLog 统计本次模拟的角色分布和发言人分布
+  const roleCounts = {};
+  const speakerCounts = {};
+  mainSimLog.forEach(msg => {
+    if (msg.type !== 'turn') return;
+    roleCounts[msg.role]    = (roleCounts[msg.role]    || 0) + 1;
+    speakerCounts[msg.display] = (speakerCounts[msg.display] || 0) + 1;
+  });
+  const total = Object.values(speakerCounts).reduce((a,b)=>a+b, 0) || 1;
+  const sortedSpeakers = Object.entries(speakerCounts).sort((a,b)=>b[1]-a[1]);
+  const [topName = '', topCnt = 0] = sortedSpeakers[0] || [];
+  const secondCnt = sortedSpeakers[1]?.[1] || 0;
+  return {
+    role_counts:      JSON.stringify(roleCounts),
+    top_speaker:      topName,
+    top_speaker_pct:  Math.round(topCnt / total * 100) + '%',
+    top_speaker_gap:  String(Math.max(0, topCnt - secondCnt)),
+    total_turns:      String(total),
+  };
+}
+
+// 将建议文本中的少量 Markdown 转为规整 HTML
+function _formatRecInline(text) {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/📚 文献依据：(.+)/g, '<span class="rec-citation">📚 $1</span>');
+}
+
+function _mdToHtml(text) {
+  return String(text || '')
+    .trim()
+    .split(/\n{2,}/)
+    .map(block => {
+      const clean = block.trim();
+      if (!clean) return '';
+      const heading = clean.match(/^#{3,6}\s+(.+)/);
+      if (heading) {
+        const lines = clean.split(/\n/);
+        const titleText = lines[0].replace(/^#{3,6}\s+/, '');
+        const title = `<div class="rec-item-title">${_formatRecInline(titleText)}</div>`;
+        const rest = lines.slice(1).join('\n').trim();
+        return rest ? `${title}<p>${_formatRecInline(rest).replace(/\n/g, '<br>')}</p>` : title;
+      }
+      return `<p>${_formatRecInline(clean).replace(/\n/g, '<br>')}</p>`;
+    })
+    .join('');
+}
+
+async function openRec() {
+  document.getElementById('recModal').classList.add('open');
+  const body = document.getElementById('recBody');
+  body.innerHTML = '<div style="text-align:center;color:#aaa;padding:30px">正在分析本次模拟并生成个性化建议…</div>';
+
+  try {
+    const stats  = _calcSimStats();
+    const params = new URLSearchParams(stats);
+    const resp   = await fetch(`/api/recommendations/${currentGroupId}?${params.toString()}`);
+    const data   = await resp.json();
+
+    document.getElementById('recSubtitle').textContent =
+      `${data.group_label} · 基于本次模拟数据动态生成`;
+
+    const ss = data.sim_stats || {};
+    const posColor = (ss.pos_pct||0) >= 60 ? '#2ECC71' : (ss.pos_pct||0) >= 40 ? '#F39C12' : '#E74C3C';
+    const negColor = (ss.neg_pct||0) <= 15 ? '#2ECC71' : (ss.neg_pct||0) <= 30 ? '#F39C12' : '#E74C3C';
+
+    // ── 统计卡片（快速显示，固定结构）─────────────────────────
+    let html = `
+      <div style="background:#F7FAFF;border-radius:14px;padding:14px 16px;margin-bottom:16px;border:1px solid #D0DCFF">
+        <div style="font-weight:700;font-size:.88rem;color:#3355AA;margin-bottom:10px">📊 本次模拟角色分布</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <div style="flex:1;min-width:90px;background:#fff;border-radius:10px;padding:9px 10px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.07)">
+            <div style="font-size:1.4rem;font-weight:700;color:${posColor}">${ss.pos_pct??'—'}%</div>
+            <div style="font-size:.68rem;color:#888;margin-top:2px">积极学习角色</div>
+          </div>
+          <div style="flex:1;min-width:90px;background:#fff;border-radius:10px;padding:9px 10px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.07)">
+            <div style="font-size:1.4rem;font-weight:700;color:${negColor}">${ss.neg_pct??'—'}%</div>
+            <div style="font-size:.68rem;color:#888;margin-top:2px">消极/冲突角色</div>
+          </div>
+          <div style="flex:1;min-width:90px;background:#fff;border-radius:10px;padding:9px 10px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.07)">
+            <div style="font-size:.95rem;font-weight:700;color:#667EEA">${ss.dominant??'—'}</div>
+            <div style="font-size:.68rem;color:#888;margin-top:2px">最多角色 (${ss.dominant_pct??0}%)</div>
+          </div>
+          ${ss.top_speaker ? `<div style="flex:1;min-width:90px;background:#fff;border-radius:10px;padding:9px 10px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.07)">
+            <div style="font-size:.95rem;font-weight:700;color:#E67E22">${ss.top_speaker}</div>
+            <div style="font-size:.68rem;color:#888;margin-top:2px">发言最多 (${ss.top_speaker_pct})</div>
+          </div>` : ''}
+        </div>
+      </div>`;
+
+    // ── LLM 生成的个性化建议（Markdown → HTML）──────────────
+    if (data.llm_advice) {
+      html += `<div style="font-size:.78rem;font-weight:700;color:#999;letter-spacing:1px;margin-bottom:10px">💡 基于本次模拟数据的教学建议</div>`;
+      html += `<div class="rec-llm-body">${_mdToHtml(data.llm_advice)}</div>`;
+    }
+
+    body.innerHTML = html || '<div style="color:#aaa">暂无建议数据。</div>';
+    body.scrollTop = 0;
+  } catch (e) {
+    body.innerHTML = `<div style="color:#E74C3C;padding:16px">加载失败：${e.message}</div>`;
+  }
+}
+
+function closeRec(e) {
+  if (!e || e.target === document.getElementById('recModal')) {
+    document.getElementById('recModal').classList.remove('open');
+  }
+}
+
+function startCmpSim(colIdx) {
+  const idle   = document.getElementById(`cmp-idle-${colIdx}`);
+  const scroll = document.getElementById(`cmp-scroll-${colIdx}`);
+
+  idle.innerHTML = `<div class="cmp-loading"><div class="spin"></div><span>生成中，请稍候…</span></div>`;
+  idle.style.display = 'flex';
+  scroll.style.display = 'none';
+  scroll.innerHTML = '';
+
+  const cfg    = getTaskConfig();
+  const params = new URLSearchParams(cfg);
+  const url    = `/api/simulate/basic/${currentGroupId}?${params.toString()}`;
+
+  const srcIdx = colIdx - 1;
+  if (cmpSources[srcIdx]) cmpSources[srcIdx].close();
+  cmpTerminalStates[srcIdx] = null;
+  cmpSources[srcIdx] = new EventSource(url);
+
+  cmpSources[srcIdx].onmessage = e => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'init' || msg.type === 'status' || msg.type === 'canvas') return;
+    if (msg.type === 'error') {
+      cmpTerminalStates[srcIdx] = 'error';
+      if (cmpSources[srcIdx]) { cmpSources[srcIdx].close(); cmpSources[srcIdx] = null; }
+      idle.style.display = 'flex';
+      scroll.style.display = 'none';
+      idle.innerHTML = `<div class="cmp-loading" style="color:#E74C3C">⚠️ ${msg.msg}</div>`;
+      return;
+    }
+    if (msg.type === 'done') {
+      cmpTerminalStates[srcIdx] = 'done';
+      if (cmpSources[srcIdx]) { cmpSources[srcIdx].close(); cmpSources[srcIdx] = null; }
+      const doneEntry = document.createElement('div');
+      doneEntry.className = 'log-entry';
+      doneEntry.style.borderLeftColor = '#ddd';
+      doneEntry.innerHTML = `<div class="le-text" style="color:#aaa;font-size:.76rem">✅ 生成完成</div>`;
+      scroll.appendChild(doneEntry);
+      return;
+    }
+    // 第一条内容到达：切换到滚动视图
+    if (idle.style.display !== 'none') {
+      idle.style.display   = 'none';
+      scroll.style.display = 'flex';
+    }
+    const entry = renderCmpEntry(msg);
+    if (entry) { scroll.appendChild(entry); scroll.scrollTop = scroll.scrollHeight; }
+  };
+
+  cmpSources[srcIdx].onerror = () => {
+    if (cmpSources[srcIdx]) { cmpSources[srcIdx].close(); cmpSources[srcIdx] = null; }
+    if (cmpTerminalStates[srcIdx]) return;
+    cmpTerminalStates[srcIdx] = 'error';
+    idle.style.display = 'flex';
+    scroll.style.display = 'none';
+    idle.innerHTML = `<div class="cmp-loading" style="color:#E74C3C">连接中断，请重试</div>`;
+  };
+}
+
+function showCmpHelp() {
+  alert(
+    '【两种系统对比说明】\n\n' +
+    '★ 完整系统（本研究）\n' +
+    '   · 角色概率来自多项 Logit 回归模型\n' +
+    '   · 批次=3，链式回应提示词（每轮明确回应上一轮）\n' +
+    '   · 传入完整对话历史与角色行为规范\n' +
+    '   · 预期效果：发言连贯、角色契合、无自问自答\n\n' +
+    '基础提示词组（对照）\n' +
+    '   · 同等角色概率与组型偏置\n' +
+    '   · 批次=5，无链式回应指导\n' +
+    '   · 不传入对话历史\n' +
+    '   · 预期效果：发言较独立、连贯性弱、可能出现自问自答'
+  );
+}
+
+// ══════════════════════════════════
+// S4 — History
+// ══════════════════════════════════
+async function loadHistory() {
+  const body = document.getElementById('historyBody');
+  body.innerHTML = '<p class="history-empty">加载中…</p>';
+  try {
+    const resp = await fetch('/api/history');
+    const list = await resp.json();
+    if (!list.length) {
+      body.innerHTML = '<p class="history-empty">暂无历史记录</p>';
+      return;
+    }
+    // Group by group_label
+    const grouped = {};
+    list.forEach(item => {
+      if (!grouped[item.group_label]) grouped[item.group_label] = [];
+      grouped[item.group_label].push(item);
+    });
+    body.innerHTML = '';
+    for (const [label, items] of Object.entries(grouped)) {
+      const lbl = document.createElement('div');
+      lbl.className = 'hist-group-label';
+      lbl.textContent = label;
+      body.appendChild(lbl);
+      items.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'hist-card';
+        const ts  = item.timestamp ? item.timestamp.replace('T',' ').slice(0,19) : '';
+        const initials = label.slice(-2);
+        card.innerHTML = `
+          <div class="hist-dot">${initials}</div>
+          <div class="hist-info">
+            <div class="h-title">${item.group_label}</div>
+            <div class="h-meta">${ts} &nbsp;·&nbsp; ${item.members.join(' ')}</div>
+          </div>
+          <div class="hist-turns">${item.turns_used} 轮</div>`;
+        card.onclick = () => openHistoryDetail(item.filename);
+        body.appendChild(card);
+      });
+    }
+  } catch(e) {
+    body.innerHTML = '<p class="history-empty">加载失败，请重试</p>';
+  }
+}
+
+async function openHistoryDetail(filename) {
+  const resp = await fetch(`/api/history/${filename}`);
+  const data = await resp.json();
+
+  document.getElementById('modalTitle').textContent =
+    data.group_label + ' · ' + (data.timestamp||'').replace('T',' ').slice(0,19);
+  document.getElementById('modalMeta').textContent  =
+    `共 ${data.turns_used} 轮 · ` +
+    (data.members||[]).map(m=>m.display).join(' ');
+
+  const log = document.getElementById('modalLog');
+  log.innerHTML = '';
+  (data.conversation||[]).forEach(msg => {
+    const entry = document.createElement('div');
+    if (msg.type === 'teacher') {
+      entry.className = 'log-entry teacher-entry';
+      entry.innerHTML = `
+        <div class="le-header"><span class="le-name" style="color:#2C6B4F">👩‍🏫 老师</span></div>
+        <div class="le-text">${msg.text}</div>`;
+    } else if (msg.type === 'turn') {
+      entry.className = 'log-entry';
+      entry.style.borderLeftColor = msg.color || '#ccc';
+      entry.innerHTML = `
+        <div class="le-header">
+          <span class="le-name">${msg.display}</span>
+          <span class="le-role" style="background:${msg.color||'#ccc'}">${msg.role}</span>
+          <span class="le-no">#${msg.turn}</span>
+        </div>
+        <div class="le-text">${msg.text}</div>`;
+    } else if (msg.type === 'canvas') {
+      entry.className = 'canvas-entry';
+      const items = Array.isArray(msg.items) && msg.items.length ? msg.items : ['（暂无有效画面线索）'];
+      entry.innerHTML = `
+        <div class="canvas-meta">🖼 第 ${msg.turn} / ${msg.total} 轮后</div>
+        <div class="canvas-items">${items.map(x => `<div>${x}</div>`).join('')}</div>`;
+    } else {
+      return;
+    }
+    log.appendChild(entry);
+  });
+
+  document.getElementById('histModal').classList.add('open');
+}
+
+function closeModal(e) {
+  if (!e || e.target === document.getElementById('histModal')) {
+    document.getElementById('histModal').classList.remove('open');
+  }
+}
+
+// ══════════════════════════════════
+// Init
+// ══════════════════════════════════
+buildGroupCards();
+document.getElementById('teacherFig').src = avatarSvg('teacher', '#2C6B4F');
+</script>
+</body>
+</html>
