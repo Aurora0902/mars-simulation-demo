@@ -29,15 +29,20 @@ class MarsController:
 
     def __init__(
         self,
-        matrix_path: str,
+        matrix_path,               # str | pd.DataFrame（兼容旧用法）
         agents_data,               # str | pd.DataFrame
-        initial_dist_path: str,
+        initial_dist_path=None,    # str | pd.Series（兼容旧用法）
         role_bias: dict = None,
         stage_defs: list = None,
+        transition_matrix_df: pd.DataFrame = None,
+        initial_dist_series: pd.Series = None,
     ):
-        transition_matrix_df = pd.read_excel(matrix_path, index_col=0, sheet_name=1, engine='openpyxl')
-        initial_dist_df      = pd.read_csv(initial_dist_path, index_col='role')
-        initial_dist_series  = initial_dist_df['frequency']
+        # 兼容：如果传了预读的 DataFrame 就直接用，否则从文件读
+        if transition_matrix_df is None:
+            transition_matrix_df = pd.read_excel(matrix_path, index_col=0, sheet_name=1, engine='openpyxl')
+        if initial_dist_series is None:
+            initial_dist_df     = pd.read_csv(initial_dist_path, index_col='role')
+            initial_dist_series = initial_dist_df['frequency']
 
         self.speaker_selector = SpeakerSelector(agents_data)
         self.role_sampler     = RoleSampler(transition_matrix_df, initial_dist_series, role_bias=role_bias)

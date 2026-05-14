@@ -108,17 +108,22 @@ class BatchDialogueGenerator:
                 raise ValueError("DEEPSEEK_API_KEY 或 DEEPSEEK_API_KEYS 环境变量未设置。")
             keys = [single]
         self._api_keys = keys
-        self.client     = self._make_client()
-        self.model_name = "deepseek-chat"
+        # 预创建固定客户端池，复用 TCP 连接，不再每批新建
+        from httpx import Timeout
+        self._timeout = Timeout(connect=15.0, read=45.0, write=15.0, pool=15.0)
+        self._clients = [
+            OpenAI(api_key=k, base_url="https://api.deepseek.com/v1", timeout=self._timeout)
+            for k in keys
+        ]
+        self._client_idx = 0
+        self.model_name  = "deepseek-chat"
         self.agents_data = agents_data
 
-    def _make_client(self) -> OpenAI:
-        """随机选一个 key 创建客户端，分散限流压力。"""
-        return OpenAI(
-            api_key=random.choice(self._api_keys),
-            base_url="https://api.deepseek.com/v1",
-            timeout=180.0,
-        )
+    def _next_client(self) -> OpenAI:
+        """轮换复用预创建的客户端，分散限流压力。"""
+        client = self._clients[self._client_idx % len(self._clients)]
+        self._client_idx += 1
+        return client
 
     def _build_member_profiles(self, group_names: List[str]) -> str:
         profiles = [Student(self.agents_data.loc[name]).profile_text for name in group_names]
@@ -165,7 +170,7 @@ class BatchDialogueGenerator:
 直接输出："""
 
             try:
-                resp = self.client.chat.completions.create(
+                resp = self._next_client().chat.completions.create(
                     model=self.model_name,
                     messages=[
                         {"role": "system", "content": "你只输出本次指定轮次的发言。每行只能有一个学生姓名和一句话。"},
@@ -365,9 +370,9 @@ class BatchDialogueGenerator:
             "每句自然接续前面，但只说当前指定学生自己的话。"
         )
 
-        self.client = self._make_client()   # 每批随机选一个 key
+        client = self._next_client()
         try:
-            stream = self.client.chat.completions.create(
+            stream = client.chat.completions.create(
                 model=self.model_name,
                 messages=[
                     {"role": "system", "content": system_msg},
@@ -406,7 +411,9 @@ class BatchDialogueGenerator:
             utterance = self._parse_line(buffer.strip())
             if utterance:
                 g, spk, role = turn_sequence[turn_idx]
-                yield g, spk, role, utterance
+                yield g, spk, role, self._repair_utterance(
+                    utterance, spk, role, recent_history, task_name, stage_name, stage_desc
+                )
                 turn_idx += 1
 
         # 如果还有未填充的轮次，先 retry 一次，再 fallback

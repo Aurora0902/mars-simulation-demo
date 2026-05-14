@@ -21,10 +21,7 @@ ROLE_HINTS = {
 
 class BatchDialogueGenerator:
     """
-    完整系统的对话生成器（batch=3，链式回应提示词）。
-
-    核心改进：每批发言中，第 N 轮明确被提示"直接回应第 N-1 轮"，
-    消除自问自答和自我反驳问题。
+    基础提示词组的对话生成器（对照组）。
     """
 
     def __init__(self, agents_data: pd.DataFrame):
@@ -35,16 +32,22 @@ class BatchDialogueGenerator:
                 raise ValueError("DEEPSEEK_API_KEY 或 DEEPSEEK_API_KEYS 环境变量未设置。")
             keys = [single]
         self._api_keys = keys
-        self.client     = self._make_client()
-        self.model_name = "deepseek-chat"
+        # 预创建固定客户端池，复用 TCP 连接
+        from httpx import Timeout
+        self._timeout = Timeout(connect=15.0, read=45.0, write=15.0, pool=15.0)
+        self._clients = [
+            OpenAI(api_key=k, base_url="https://api.deepseek.com/v1", timeout=self._timeout)
+            for k in keys
+        ]
+        self._client_idx = 0
+        self.model_name  = "deepseek-chat"
         self.agents_data = agents_data
 
-    def _make_client(self) -> OpenAI:
-        return OpenAI(
-            api_key=random.choice(self._api_keys),
-            base_url="https://api.deepseek.com/v1",
-            timeout=180.0,
-        )
+    def _next_client(self) -> OpenAI:
+        """轮换复用预创建的客户端，分散限流压力。"""
+        client = self._clients[self._client_idx % len(self._clients)]
+        self._client_idx += 1
+        return client
 
     def _build_member_profiles(self, group_names: List[str]) -> str:
         profiles = [Student(self.agents_data.loc[name]).profile_text for name in group_names]
@@ -115,9 +118,9 @@ class BatchDialogueGenerator:
             "严格每行输出一条发言，格式为「姓名：内容」。"
         )
 
-        self.client = self._make_client()   # 每批随机选一个 key
+        client = self._next_client()
         try:
-            stream = self.client.chat.completions.create(
+            stream = client.chat.completions.create(
                 model=self.model_name,
                 messages=[
                     {"role": "system", "content": system_msg},
@@ -128,24 +131,27 @@ class BatchDialogueGenerator:
                 stream=True,
             )
         except Exception as e:
-            print(f"\n调用 DeepSeek API 时出错: {e}")
+            print(f"\n[basic] 调用 DeepSeek API 时出错: {e}")
             for g, spk, role in turn_sequence:
                 yield g, spk, role, self._fallback(role)
             return
 
         buffer   = ""
         turn_idx = 0
-        for chunk in stream:
-            if not chunk.choices:
-                continue
-            buffer += chunk.choices[0].delta.content or ""
-            while "\n" in buffer and turn_idx < len(turn_sequence):
-                line, buffer = buffer.split("\n", 1)
-                utterance = self._parse_line(line)
-                if utterance:
-                    g, spk, role = turn_sequence[turn_idx]
-                    yield g, spk, role, utterance
-                    turn_idx += 1
+        try:
+            for chunk in stream:
+                if not chunk.choices:
+                    continue
+                buffer += chunk.choices[0].delta.content or ""
+                while "\n" in buffer and turn_idx < len(turn_sequence):
+                    line, buffer = buffer.split("\n", 1)
+                    utterance = self._parse_line(line)
+                    if utterance:
+                        g, spk, role = turn_sequence[turn_idx]
+                        yield g, spk, role, utterance
+                        turn_idx += 1
+        except Exception as e:
+            print(f"\n[basic stream] 流式传输中断: {e}，已收到 {turn_idx} 轮，剩余用 fallback")
 
         if buffer.strip() and turn_idx < len(turn_sequence):
             utterance = self._parse_line(buffer.strip())

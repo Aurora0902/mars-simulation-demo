@@ -22,10 +22,15 @@ os.makedirs(HISTORY_DIR, exist_ok=True)
 
 TEST_TURNS = 50  # None → 使用每组 base_turns
 
-# ── 载入合成小组数据 ────────────────────────────────────────────────────────
+# ── 载入合成小组数据（启动时一次性读取，不再每次模拟重复 IO）──────────────
 from mars_simulation.synthetic_groups import GROUP_DEFS, build_agents_dataframe
 
 AGENTS_DF = build_agents_dataframe()   # 全局 DataFrame，各控制器共享
+
+# 预读转换矩阵和初始分布，避免每次模拟都 read_excel
+TRANSITION_MATRIX_DF = pd.read_excel(MATRIX_PATH, index_col=0, sheet_name=1, engine='openpyxl')
+INITIAL_DIST_DF      = pd.read_csv(INIT_DIST_PATH, index_col='role')
+INITIAL_DIST_SERIES  = INITIAL_DIST_DF['frequency']
 
 
 ROLE_COLORS = {
@@ -129,28 +134,68 @@ TURN_RE    = re.compile(r'^(\d+)/(\d+)\s+(.+?)（(.+?)）：(.+)$')
 TEACHER_RE = re.compile(r'^\[教师\]\s*老师：(.+)$')
 CANVAS_RE  = re.compile(r'^\[画面状态\]\s*(\d+)/(\d+)：(.+)$')
 CHECK_RE   = re.compile(r'^\s*\[检查未通过')
-HIDDEN_STATUS_RE = re.compile(r'^\s*(发言上限：|--- 正在为小组:|--- 正在更新(?:备忘录|画面状态)|--- 模拟(?:完成|已取消|已保存))')
+HIDDEN_STATUS_RE = re.compile(
+    r'^\s*('
+    r'发言上限：'
+    r'|--- 正在为小组:'
+    r'|--- 正在更新(?:备忘录|画面状态)'
+    r'|--- 模拟(?:完成|已取消|已保存|已取消)'
+    r'|\[retry'       # 重试调试信息
+    r'|\[fallback\]'  # fallback 调试信息
+    r'|\[stream\]'    # 流中断调试信息
+    r'|\[basic'       # basic 组调试信息
+    r'|\[画面状态\]'  # 画面状态已由 CANVAS_RE 处理
+    r'|调用 DeepSeek'
+    r')'
+)
+
+
+# 线程安全的 stdout 捕获机制：每个线程通过 thread-local 路由到自己的队列。
+# 旧版本直接替换 sys.stdout，并发请求时会互相破坏 stdout 状态，
+# 导致"老师发言后就没下文"的诡异 bug。
+_capture_local      = threading.local()
+_original_stdout    = sys.stdout
+
+
+class _StdoutDispatcher:
+    """全局 stdout 代理：根据当前线程的 LineCapture 路由写入。"""
+    def write(self, text):
+        _original_stdout.write(text)
+        cap = getattr(_capture_local, 'capture', None)
+        if cap is not None:
+            cap._handle_write(text)
+
+    def flush(self):
+        _original_stdout.flush()
+
+
+# 安装一次全局 dispatcher
+if not isinstance(sys.stdout, _StdoutDispatcher):
+    sys.stdout = _StdoutDispatcher()
 
 
 class LineCapture:
+    """把当前线程内的 print 行送入指定队列。线程安全。"""
     def __init__(self, q):
-        self.q, self._buf, self._orig = q, '', sys.stdout
+        self.q     = q
+        self._buf  = ''
+        self._prev = None
 
-    def write(self, text):
-        self._orig.write(text)
+    def _handle_write(self, text):
         self._buf += text
         while '\n' in self._buf:
             line, self._buf = self._buf.split('\n', 1)
             self.q.put(line)
 
-    def flush(self): self._orig.flush()
-
     def __enter__(self):
-        sys.stdout = self; return self
+        self._prev = getattr(_capture_local, 'capture', None)
+        _capture_local.capture = self
+        return self
 
     def __exit__(self, *_):
-        sys.stdout = self._orig
-        if self._buf: self.q.put(self._buf)
+        _capture_local.capture = self._prev
+        if self._buf:
+            self.q.put(self._buf)
 
 
 def save_history(group_id: int, turns_used: int, log: list) -> str:
@@ -341,7 +386,14 @@ def api_recommendations(group_id: int):
     })
 
 
-def _simulate_response(group_id: int, ctrl_factory, record_history: bool = True):
+# 每个 (group_id, sim_type) 对应一个活跃的 cancel_event
+# 新请求进来时立即 set 旧的，避免"僵尸线程"占用 API 连接
+_active_cancels: dict = {}
+_active_cancels_lock  = threading.Lock()
+
+
+def _simulate_response(group_id: int, ctrl_factory, record_history: bool = True,
+                       sim_type: str = 'main'):
     if group_id not in GROUPS:
         return Response('unknown group', status=404)
 
@@ -352,6 +404,14 @@ def _simulate_response(group_id: int, ctrl_factory, record_history: bool = True)
 
     q: queue.Queue = queue.Queue()
     cancel_event   = threading.Event()
+
+    # 取消同组同类型的旧模拟（如果有）
+    sim_key = f"{group_id}_{sim_type}"
+    with _active_cancels_lock:
+        old = _active_cancels.get(sim_key)
+        if old:
+            old.set()
+        _active_cancels[sim_key] = cancel_event
 
     run_id = uuid.uuid4().hex[:8]
 
@@ -454,6 +514,10 @@ def _simulate_response(group_id: int, ctrl_factory, record_history: bool = True)
                     yield sse({'type': 'status', 'msg': line.strip()})
         finally:
             cancel_event.set()
+            # 清理活跃记录（只清理自己的，避免覆盖新请求的）
+            with _active_cancels_lock:
+                if _active_cancels.get(sim_key) is cancel_event:
+                    del _active_cancels[sim_key]
 
     return Response(
         stream_with_context(generate()),
@@ -469,11 +533,13 @@ def api_simulate(group_id: int):
     def ctrl_factory():
         from mars_simulation.controller import MarsController
         return MarsController(
-            MATRIX_PATH, AGENTS_DF, INIT_DIST_PATH,
+            matrix_path=None, agents_data=AGENTS_DF, initial_dist_path=None,
             role_bias=GROUP_DEFS[group_id].get('role_bias'),
             stage_defs=task_cfg['stages'],
+            transition_matrix_df=TRANSITION_MATRIX_DF,
+            initial_dist_series=INITIAL_DIST_SERIES,
         )
-    return _simulate_response(group_id, ctrl_factory, record_history=True)
+    return _simulate_response(group_id, ctrl_factory, record_history=True, sim_type='main')
 
 
 @app.route('/api/simulate/basic/<int:group_id>')
@@ -483,11 +549,13 @@ def api_simulate_basic(group_id: int):
     def ctrl_factory():
         from mars_simulation.controller_basic import BasicMarsController
         return BasicMarsController(
-            MATRIX_PATH, AGENTS_DF, INIT_DIST_PATH,
+            matrix_path=None, agents_data=AGENTS_DF, initial_dist_path=None,
             role_bias=GROUP_DEFS[group_id].get('role_bias'),
             stage_defs=task_cfg['stages'],
+            transition_matrix_df=TRANSITION_MATRIX_DF,
+            initial_dist_series=INITIAL_DIST_SERIES,
         )
-    return _simulate_response(group_id, ctrl_factory, record_history=False)
+    return _simulate_response(group_id, ctrl_factory, record_history=False, sim_type='basic')
 
 
 @app.route('/api/history')

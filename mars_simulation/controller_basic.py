@@ -13,13 +13,17 @@ class BasicMarsController(MarsController):
 
     def __init__(
         self,
-        matrix_path: str,
-        agents_data,
-        initial_dist_path: str,
+        matrix_path=None,
+        agents_data=None,
+        initial_dist_path=None,
         role_bias: dict = None,
         stage_defs: list = None,
+        transition_matrix_df=None,
+        initial_dist_series=None,
     ):
         super().__init__(matrix_path, agents_data, initial_dist_path,
-                         role_bias=role_bias, stage_defs=stage_defs)
+                         role_bias=role_bias, stage_defs=stage_defs,
+                         transition_matrix_df=transition_matrix_df,
+                         initial_dist_series=initial_dist_series)
         # 覆盖父类生成器，使用基础版
         self.batch_gen = BatchDialogueGenerator(self.speaker_selector.all_agents_data)

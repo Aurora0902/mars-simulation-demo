@@ -1316,16 +1316,19 @@ function updateStats(speakerName) {
 // S5 — 提示词对比
 // ══════════════════════════════════
 function goCompare() {
-  // 关闭上次可能残留的对比流
+  // 关闭上次可能残留的对比流，彻底重置状态
   cmpSources.forEach((s, i) => { if (s) { s.close(); cmpSources[i] = null; } });
+  cmpTerminalStates = [null];
 
   goScreen(5);
   document.getElementById('cmpTitle').textContent =
     document.getElementById('simTitle').textContent + ' · 提示词对比';
 
-  // 重置基础提示词组列
+  // 重置基础提示词组列：恢复原始按钮
   [1].forEach(i => {
-    document.getElementById(`cmp-idle-${i}`).style.display   = 'flex';
+    const idle = document.getElementById(`cmp-idle-${i}`);
+    idle.style.display = 'flex';
+    idle.innerHTML = `<button class="cmp-start-btn" style="background:#95A5A6" onclick="startCmpSim(${i})">▶ 生成对话</button><span class="cmp-idle-hint">点击开始生成此条件的对话</span>`;
     document.getElementById(`cmp-scroll-${i}`).style.display = 'none';
     document.getElementById(`cmp-scroll-${i}`).innerHTML     = '';
   });
@@ -1495,7 +1498,13 @@ function startCmpSim(colIdx) {
 
   cmpSources[srcIdx].onmessage = e => {
     const msg = JSON.parse(e.data);
-    if (msg.type === 'init' || msg.type === 'status' || msg.type === 'canvas') return;
+    if (msg.type === 'status' || msg.type === 'canvas') return;
+    if (msg.type === 'init') {
+      // init 到达即隐藏加载，切换到滚动视图准备接收发言
+      idle.style.display   = 'none';
+      scroll.style.display = 'flex';
+      return;
+    }
     if (msg.type === 'error') {
       cmpTerminalStates[srcIdx] = 'error';
       if (cmpSources[srcIdx]) { cmpSources[srcIdx].close(); cmpSources[srcIdx] = null; }
