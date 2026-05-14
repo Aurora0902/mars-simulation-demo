@@ -165,7 +165,6 @@ class BatchDialogueGenerator:
 直接输出："""
 
             try:
-                self.client = self._make_client()
                 resp = self.client.chat.completions.create(
                     model=self.model_name,
                     messages=[
@@ -366,8 +365,8 @@ class BatchDialogueGenerator:
             "每句自然接续前面，但只说当前指定学生自己的话。"
         )
 
+        self.client = self._make_client()   # 每批随机选一个 key
         try:
-            self.client = self._make_client()
             stream = self.client.chat.completions.create(
                 model=self.model_name,
                 messages=[
@@ -396,7 +395,9 @@ class BatchDialogueGenerator:
                     utterance = self._parse_line(line)
                     if utterance:
                         g, spk, role = turn_sequence[turn_idx]
-                        yield g, spk, role, utterance
+                        yield g, spk, role, self._repair_utterance(
+                            utterance, spk, role, recent_history, task_name, stage_name, stage_desc
+                        )
                         turn_idx += 1
         except Exception as e:
             print(f"\n[stream] 流式传输中断: {e}，已收到 {turn_idx} 轮，剩余走 retry")

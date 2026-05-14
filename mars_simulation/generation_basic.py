@@ -115,6 +115,7 @@ class BatchDialogueGenerator:
             "严格每行输出一条发言，格式为「姓名：内容」。"
         )
 
+        self.client = self._make_client()   # 每批随机选一个 key
         try:
             stream = self.client.chat.completions.create(
                 model=self.model_name,
