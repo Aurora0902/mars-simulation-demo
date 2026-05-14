@@ -82,7 +82,7 @@ class MarsController:
         for i in range(1, dialogue_turns + 1):
             excluded_roles = set()
             if i == 1:
-                excluded_roles.update({'社交支持者', '反思评价者'})
+                excluded_roles.update({'社交支持者', '反思评价者', '争吵促进者'})
             target_role = self.role_sampler.sample_next_role(current_role, excluded_roles)
 
             excluded_speakers = {name for name, cnt in consecutive_counts.items() if cnt >= self.MAX_CONSECUTIVE}
