@@ -359,13 +359,8 @@ def api_recommendations(group_id: int):
 
     llm_text = ''
     try:
-        from openai import OpenAI as _OAI
-        _client = _OAI(
-            api_key=os.environ.get('DEEPSEEK_API_KEY', ''),
-            base_url='https://api.deepseek.com/v1',
-            timeout=30.0,
-        )
-        resp = _client.chat.completions.create(
+        from mars_simulation.generation import _get_next_client
+        resp = _get_next_client().chat.completions.create(
             model='deepseek-chat',
             messages=[
                 {'role': 'system', 'content': '你是一位合作学习领域的专业研究者，为教师提供基于数据的个性化建议。'},

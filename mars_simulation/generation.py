@@ -4,9 +4,33 @@ import re
 import random
 from typing import List, Tuple
 import pandas as pd
+from httpx import Timeout
 from openai import OpenAI
 from mars_simulation.data_structures import Student
 from mars_simulation.fallbacks import fallback_for_role
+
+# 全局客户端池：模块导入时创建一次，所有模拟共享，避免每次模拟重复初始化 SSL/连接池
+def _build_global_clients():
+    keys = [k.strip() for k in os.environ.get("DEEPSEEK_API_KEYS", "").split(",") if k.strip()]
+    if not keys:
+        single = os.environ.get("DEEPSEEK_API_KEY", "")
+        if single:
+            keys = [single]
+    if not keys:
+        return []
+    _timeout = Timeout(connect=15.0, read=45.0, write=15.0, pool=15.0)
+    return [OpenAI(api_key=k, base_url="https://api.deepseek.com/v1", timeout=_timeout) for k in keys]
+
+_GLOBAL_CLIENTS = _build_global_clients()
+_global_client_idx = 0
+
+def _get_next_client() -> OpenAI:
+    global _global_client_idx
+    if not _GLOBAL_CLIENTS:
+        raise ValueError("DEEPSEEK_API_KEY 或 DEEPSEEK_API_KEYS 环境变量未设置。")
+    client = _GLOBAL_CLIENTS[_global_client_idx % len(_GLOBAL_CLIENTS)]
+    _global_client_idx += 1
+    return client
 
 ROLE_HINTS = {
     "知识贡献者": "说出一个关于任务的具体事实或信息，别解释太完整。",
@@ -100,30 +124,12 @@ class BatchDialogueGenerator:
     """
 
     def __init__(self, agents_data: pd.DataFrame):
-        keys = [k.strip() for k in os.environ.get("DEEPSEEK_API_KEYS", "").split(",") if k.strip()]
-        if not keys:
-            # 兼容旧的单 key 环境变量
-            single = os.environ.get("DEEPSEEK_API_KEY", "")
-            if not single:
-                raise ValueError("DEEPSEEK_API_KEY 或 DEEPSEEK_API_KEYS 环境变量未设置。")
-            keys = [single]
-        self._api_keys = keys
-        # 预创建固定客户端池，复用 TCP 连接，不再每批新建
-        from httpx import Timeout
-        self._timeout = Timeout(connect=15.0, read=45.0, write=15.0, pool=15.0)
-        self._clients = [
-            OpenAI(api_key=k, base_url="https://api.deepseek.com/v1", timeout=self._timeout)
-            for k in keys
-        ]
-        self._client_idx = 0
         self.model_name  = "deepseek-chat"
         self.agents_data = agents_data
 
     def _next_client(self) -> OpenAI:
-        """轮换复用预创建的客户端，分散限流压力。"""
-        client = self._clients[self._client_idx % len(self._clients)]
-        self._client_idx += 1
-        return client
+        """从全局池轮换取客户端，复用 TCP 连接。"""
+        return _get_next_client()
 
     def _build_member_profiles(self, group_names: List[str]) -> str:
         profiles = [Student(self.agents_data.loc[name]).profile_text for name in group_names]
